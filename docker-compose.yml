@@ -1,0 +1,8 @@
+services:
+  chisha:
+    build: .
+    container_name: chisha
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./data:/app/data

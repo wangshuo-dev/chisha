@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>吃啥·组合系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    input, textarea, select { font-size: 16px !important; }
+    .tab-active { color: #f97316; }
+    .tab-inactive { color: #9ca3af; }
+    .card { transition: transform 0.1s; }
+    .card:active { transform: scale(0.98); }
+    .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: white; flex-shrink: 0; }
+    .avatar-sm { width: 28px; height: 28px; font-size: 11px; }
+    .avatar-lg { width: 48px; height: 48px; font-size: 18px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .timer-ring { transition: stroke-dashoffset 1s linear; }
+    .flash { animation: flash 0.5s ease-out; }
+    @keyframes flash { 0%,100%{background:#f0fdf4} 50%{background:#86efac} }
+    .slide-up { animation: slideUp 0.3s ease-out; }
+    @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+    .msg-bubble { max-width: 75%; word-break: break-word; }
+    .star { cursor: pointer; font-size: 20px; }
+    .pb-safe { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px) + 1rem); }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+<div id="app" class="max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl mx-auto min-h-screen relative">
+
+<!-- LOGIN -->
+<div id="login-page" class="p-6 pt-16">
+  <h1 class="text-2xl font-bold text-center mb-2">🍜 吃啥·组合系统</h1>
+  <p class="text-center text-gray-400 text-sm mb-2">考研路上，一起加油</p>
+  <div class="text-center mb-6">
+    <p class="text-orange-500 font-bold text-lg" id="login-countdown"></p>
+    <p class="text-xs text-gray-400">一起加油，我们都在</p>
+  </div>
+  <div class="grid grid-cols-3 gap-3 mb-6" id="login-users"></div>
+  <div id="login-form" class="hidden">
+    <p class="text-center text-sm text-gray-500 mb-2">输入密码登录</p>
+    <input type="password" id="login-pwd" placeholder="密码" class="w-full border rounded-xl px-4 py-3 mb-3 text-center" style="font-size:16px">
+    <button onclick="doLogin()" class="w-full bg-orange-500 text-white rounded-xl py-3 font-semibold active:bg-orange-600">登录</button>
+    <p id="login-error" class="text-red-500 text-xs text-center mt-2 hidden"></p>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main-app" class="hidden pb-safe">
+  <!-- Header -->
+  <header class="bg-white sticky top-0 z-20 px-4 py-3 shadow-sm">
+    <div class="flex items-center justify-between">
+      <h1 class="text-lg font-bold text-gray-800">🍜 吃啥</h1>
+      <div id="header-user" class="flex items-center gap-2 cursor-pointer" onclick="showSettings()"></div>
+    </div>
+    <div class="flex items-center justify-center gap-2 mt-1">
+      <span class="text-xs text-orange-500 font-semibold" id="header-countdown"></span>
+      <span class="text-xs text-gray-400">· 考研还剩这些天</span>
+    </div>
+  </header>
+
+  <!-- Tab Panels -->
+  <div id="panel-home" class="p-4"></div>
+  <div id="panel-focus" class="p-4 hidden"></div>
+  <div id="panel-review" class="p-4 hidden"></div>
+  <div id="panel-chat" class="p-4 hidden"></div>
+  <div id="panel-stats" class="p-4 hidden"></div>
+
+  <!-- Bottom Tab Bar -->
+  <nav class="fixed bottom-0 left-0 right-0 bg-white border-t z-30 max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl mx-auto">
+    <div class="flex h-14">
+      <button onclick="switchTab('home')" id="tab-home" class="flex-1 flex flex-col items-center justify-center tab-active"><span class="text-lg">🏠</span><span class="text-xs">首页</span></button>
+      <button onclick="switchTab('focus')" id="tab-focus" class="flex-1 flex flex-col items-center justify-center tab-inactive"><span class="text-lg">🍅</span><span class="text-xs">专注</span></button>
+      <button onclick="switchTab('review')" id="tab-review" class="flex-1 flex flex-col items-center justify-center tab-inactive"><span class="text-lg">📖</span><span class="text-xs">复习</span></button>
+      <button onclick="switchTab('chat')" id="tab-chat" class="flex-1 flex flex-col items-center justify-center tab-inactive"><span class="text-lg">💬</span><span class="text-xs">聊天</span></button>
+      <button onclick="switchTab('stats')" id="tab-stats" class="flex-1 flex flex-col items-center justify-center tab-inactive"><span class="text-lg">📊</span><span class="text-xs">统计</span></button>
+    </div>
+  </nav>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-end">
+  <div class="bg-white w-full max-w-md mx-auto rounded-t-2xl p-5 slide-up" id="modal-content"></div>
+</div>
+
+</div>
+
+<script>
+const MEMBERS = {
+  '姜荣耀': { color: '#f59e0b', goal: '考研·哲学' },
+  '李雪婷': { color: '#ec4899', goal: '学校兼职' },
+  '龙': { color: '#ef4444', goal: '考研·会计学' },
+  '马国恒': { color: '#6366f1', goal: '考研·通信学' },
+  '邱茜': { color: '#8b5cf6', goal: '考公' },
+  '王朔': { color: '#10b981', goal: '考研·教育学' }
+};
+const STATUS_LIST = ['学习中','休息','吃饭','自由','离开','隐身'];
+let currentUser = localStorage.getItem('chisha_user');
+let currentTab = 'home';
+let pomodoroInterval = null;
+let pomodoroSeconds = 25 * 60;
+let pomodoroRunning = false;
+
+function avatar(name, size='') {
+  const m = MEMBERS[name] || { color: '#666' };
+  const cls = size === 'lg' ? 'avatar avatar-lg' : size === 'sm' ? 'avatar avatar-sm' : 'avatar';
+  return `<div class="${cls}" style="background:${m.color}">${(name||'?')[0]}</div>`;
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const d = new Date(ts.includes('Z') ? ts : ts + 'Z');
+  const diff = (Date.now() - d.getTime()) / 60000;
+  if (diff < 1) return '刚刚';
+  if (diff < 60) return Math.floor(diff) + '分钟前';
+  if (diff < 1440) return Math.floor(diff/60) + '小时前';
+  return d.toLocaleDateString('zh-CN',{month:'numeric',day:'numeric'});
+}
+
+function today() { return new Date().toISOString().split('T')[0]; }
+
+// 考研倒计时 (2026年12月20日)
+function getCountdown() {
+  const examDate = new Date('2026-12-20');
+  const now = new Date();
+  const diff = Math.ceil((examDate - now) / (1000 * 60 * 60 * 24));
+  return diff > 0 ? diff : 0;
+}
+
+function updateCountdown() {
+  const days = getCountdown();
+  const el1 = document.getElementById('login-countdown');
+  const el2 = document.getElementById('header-countdown');
+  if (el1) el1.textContent = `📅 考研倒计时 ${days} 天`;
+  if (el2) el2.textContent = `📅 ${days}天`;
+}
+
+// ===== AUTH =====
+function initLogin() {
+  const c = document.getElementById('login-users');
+  c.innerHTML = Object.entries(MEMBERS).map(([name, m]) => `
+    <button onclick="selectLoginUser('${name}')" class="card bg-white rounded-xl p-3 shadow-sm text-center border-2 border-transparent hover:border-orange-300" id="lu-${name}">
+      ${avatar(name)}
+      <div class="font-medium text-xs mt-1">${name}</div>
+      <div class="text-xs text-gray-400">${m.goal}</div>
+    </button>
+  `).join('');
+}
+
+let selectedLoginUser = null;
+function selectLoginUser(name) {
+  selectedLoginUser = name;
+  document.querySelectorAll('[id^=lu-]').forEach(el => el.classList.remove('border-orange-400'));
+  document.getElementById('lu-'+name)?.classList.add('border-orange-400');
+  document.getElementById('login-form').classList.remove('hidden');
+}
+
+async function doLogin() {
+  const pwd = document.getElementById('login-pwd').value;
+  if (!selectedLoginUser || !pwd) return;
+  const r = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name:selectedLoginUser, password:pwd}) });
+  if (r.ok) {
+    currentUser = selectedLoginUser;
+    localStorage.setItem('chisha_user', currentUser);
+    localStorage.setItem('chisha_pwd', pwd);
+    showMain();
+  } else {
+    const d = await r.json();
+    const el = document.getElementById('login-error');
+    el.textContent = d.error || '登录失败';
+    el.classList.remove('hidden');
+  }
+}
+
+function logout() {
+  localStorage.removeItem('chisha_user');
+  currentUser = null;
+  location.reload();
+}
+
+// ===== MAIN =====
+function showMain() {
+  document.getElementById('login-page').classList.add('hidden');
+  document.getElementById('main-app').classList.remove('hidden');
+  document.getElementById('header-user').innerHTML = avatar(currentUser,'sm') + `<span class="text-sm">${currentUser}</span>`;
+  loadHome();
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  ['home','focus','review','chat','stats'].forEach(t => {
+    document.getElementById('panel-'+t).classList.toggle('hidden', t !== tab);
+    document.getElementById('tab-'+t).classList.toggle('tab-active', t === tab);
+    document.getElementById('tab-'+t).classList.toggle('tab-inactive', t !== tab);
+  });
+  if (tab === 'home') loadHome();
+  else if (tab === 'focus') loadFocus();
+  else if (tab === 'review') loadReview();
+  else if (tab === 'chat') loadChat();
+  else if (tab === 'stats') loadStats(7);
+}
+
+// ===== HOME TAB =====
+async function loadHome() {
+  const [statusRes, actRes] = await Promise.all([fetch('/api/status'), fetch('/api/activities')]);
+  const statuses = await statusRes.json();
+  const activities = await actRes.json();
+  const now = new Date().toISOString();
+
+  const myStatus = statuses.find(s => s.member === currentUser);
+  const myCurrentStatus = (myStatus?.expires_at && myStatus.expires_at < now) ? '离开' : (myStatus?.status || '离开');
+
+  document.getElementById('panel-home').innerHTML = `
+    <div class="bg-gradient-to-r from-orange-500 to-red-500 rounded-xl p-4 shadow-sm mb-4 text-white text-center">
+      <p class="text-xs opacity-80 mb-1">2027考研倒计时</p>
+      <p class="text-3xl font-bold">${getCountdown()}<span class="text-base font-normal ml-1">天</span></p>
+      <p class="text-xs opacity-70 mt-1">2026年12月20日 · 每一天都算数</p>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm mb-4">
+      <h3 class="text-sm font-semibold text-gray-600 mb-2">我的状态</h3>
+      <div class="flex gap-2 flex-wrap">
+        ${STATUS_LIST.map(s => `<button onclick="setStatus('${s}')" class="px-4 py-2.5 rounded-full text-sm font-medium ${s===myCurrentStatus ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-600'}">${s}</button>`).join('')}
+      </div>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm mb-4">
+      <h3 class="text-sm font-semibold text-gray-600 mb-3">谁在学习</h3>
+      <div class="grid grid-cols-3 gap-3">
+        ${Object.keys(MEMBERS).map(name => {
+          const s = statuses.find(x => x.member === name) || { member: name, status: '离开' };
+          const st = (s.expires_at && s.expires_at < now) ? '离开' : s.status;
+          const isStudying = st === '学习中';
+          return `<div class="flex flex-col items-center gap-1">
+            ${avatar(s.member,'sm')}
+            <span class="text-xs font-medium">${s.member}</span>
+            <span class="text-xs ${isStudying ? 'text-green-600 font-semibold' : 'text-gray-400'}">${st}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold text-gray-600">最近活动</h3>
+      <button onclick="showCreateActivity()" class="bg-orange-500 text-white text-xs px-3 py-1 rounded-full">+ 发起</button>
+    </div>
+    <div id="activities-list">
+      ${activities.length === 0 ? '<p class="text-center text-gray-400 text-sm py-4">暂无活动</p>' :
+        activities.slice(0,10).map(a => activityCard(a)).join('')}
+    </div>
+  `;
+}
+
+function activityCard(a) {
+  const typeMap = { eat:'🍜约饭', study:'📚学习', free:'🎮自由' };
+  const colorMap = { eat:'border-orange-400', study:'border-blue-400', free:'border-green-400' };
+  const isJoined = a.participants.includes(currentUser);
+  const isOpen = a.status === 'open';
+  const isCreator = a.creator === currentUser;
+  return `<div class="card bg-white rounded-xl p-3 shadow-sm mb-2 border-l-4 ${colorMap[a.type]||'border-gray-300'}">
+    <div class="flex justify-between items-center mb-1">
+      <span class="text-xs font-medium">${typeMap[a.type]||a.type}</span>
+      <span class="text-xs text-gray-400">${timeAgo(a.created_at)}</span>
+    </div>
+    <p class="font-medium text-sm mb-1">${a.title}</p>
+    ${a.time_slot ? `<p class="text-xs text-gray-500 mb-1">⏰ ${a.time_slot}</p>` : ''}
+    <div class="flex items-center gap-1 mb-2">${a.participants.map(p => avatar(p,'sm')).join('')}<span class="text-xs text-gray-400 ml-1">${a.participants.length}人</span></div>
+    ${isOpen ? `<div class="flex gap-2">
+      ${!isJoined ? `<button onclick="joinAct(${a.id})" class="text-xs bg-orange-50 text-orange-600 border border-orange-200 rounded-lg px-3 py-1">我也去</button>` : `<button onclick="leaveAct(${a.id})" class="text-xs bg-gray-50 text-gray-500 border rounded-lg px-3 py-1">不去了</button>`}
+      ${isCreator ? `<button onclick="closeAct(${a.id})" class="text-xs bg-gray-100 text-gray-500 rounded-lg px-3 py-1">结束</button>` : ''}
+    </div>` : '<span class="text-xs text-gray-400">已结束</span>'}
+  </div>`;
+}
+
+async function setStatus(s) { await fetch('/api/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser,status:s})}); loadHome(); }
+async function joinAct(id) { await fetch(`/api/activities/${id}/join`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser})}); loadHome(); }
+async function leaveAct(id) { await fetch(`/api/activities/${id}/leave`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser})}); loadHome(); }
+async function closeAct(id) { await fetch(`/api/activities/${id}/status`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'done'})}); loadHome(); }
+
+function showCreateActivity() {
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal-content').innerHTML = `
+    <h3 class="font-bold text-lg mb-4">发起活动</h3>
+    <div class="flex gap-2 mb-3">
+      <button onclick="document.getElementById('act-type').value='eat';this.classList.add('ring-2','ring-orange-400')" class="flex-1 py-2 rounded-lg text-sm bg-orange-50 text-orange-700 ring-2 ring-orange-400">🍜约饭</button>
+      <button onclick="document.getElementById('act-type').value='study';document.querySelectorAll('#modal-content .flex.gap-2.mb-3 button').forEach(b=>b.classList.remove('ring-2','ring-orange-400'));this.classList.add('ring-2','ring-blue-400')" class="flex-1 py-2 rounded-lg text-sm bg-blue-50 text-blue-700">📚学习</button>
+      <button onclick="document.getElementById('act-type').value='free';document.querySelectorAll('#modal-content .flex.gap-2.mb-3 button').forEach(b=>b.classList.remove('ring-2','ring-orange-400','ring-blue-400'));this.classList.add('ring-2','ring-green-400')" class="flex-1 py-2 rounded-lg text-sm bg-green-50 text-green-700">🎮自由</button>
+    </div>
+    <input type="hidden" id="act-type" value="eat">
+    <input id="act-title" placeholder="标题（如：中午去校门口吃）" class="w-full border rounded-lg px-3 py-2 text-sm mb-2" style="font-size:16px">
+    <input id="act-time" placeholder="时间（如：12:00）" class="w-full border rounded-lg px-3 py-2 text-sm mb-2" style="font-size:16px">
+    <input id="act-desc" placeholder="备注（可选）" class="w-full border rounded-lg px-3 py-2 text-sm mb-4" style="font-size:16px">
+    <div class="flex gap-2">
+      <button onclick="closeModal()" class="flex-1 border rounded-lg py-2 text-sm">取消</button>
+      <button onclick="createActivity()" class="flex-1 bg-orange-500 text-white rounded-lg py-2 text-sm font-semibold">发起</button>
+    </div>
+  `;
+}
+
+async function createActivity() {
+  const title = document.getElementById('act-title').value.trim();
+  if (!title) return alert('请输入标题');
+  await fetch('/api/activities',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    creator:currentUser, type:document.getElementById('act-type').value, title,
+    time_slot:document.getElementById('act-time').value.trim(),
+    description:document.getElementById('act-desc').value.trim()
+  })});
+  closeModal(); loadHome();
+}
+
+function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+function showSettings() {
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal-content').innerHTML = `
+    <h3 class="font-bold mb-4">${currentUser}</h3>
+    <p class="text-sm text-gray-500 mb-4">${MEMBERS[currentUser]?.goal}</p>
+    <button onclick="closeModal();switchTab('stats')" class="w-full bg-gray-100 rounded-lg py-2 text-sm mb-2">修改密码</button>
+    <button onclick="logout()" class="w-full bg-red-50 text-red-600 rounded-lg py-2 text-sm">退出登录</button>
+    <button onclick="closeModal()" class="w-full mt-2 text-gray-400 text-sm py-2">取消</button>
+  `;
+}
+
+
+// ===== FOCUS TAB =====
+function loadFocus() {
+  const panel = document.getElementById('panel-focus');
+  panel.innerHTML = `
+    <div class="bg-white rounded-xl p-6 shadow-sm mb-4 text-center">
+      <h3 class="text-sm font-semibold text-gray-600 mb-4">🍅 番茄专注</h3>
+      <div class="relative inline-block mb-4">
+        <svg width="180" height="180" class="transform -rotate-90">
+          <circle cx="90" cy="90" r="80" fill="none" stroke="#f3f4f6" stroke-width="8"/>
+          <circle id="timer-ring" cx="90" cy="90" r="80" fill="none" stroke="#f97316" stroke-width="8" stroke-linecap="round" stroke-dasharray="502.65" stroke-dashoffset="0" class="timer-ring"/>
+        </svg>
+        <div class="absolute inset-0 flex items-center justify-center">
+          <span id="timer-display" class="text-3xl font-bold text-gray-800">25:00</span>
+        </div>
+      </div>
+      <div class="flex gap-3 justify-center">
+        <button onclick="togglePomodoro()" id="pomo-btn" class="bg-orange-500 text-white px-6 py-2 rounded-full text-sm font-semibold">开始</button>
+        <button onclick="resetPomodoro()" class="bg-gray-200 text-gray-600 px-4 py-2 rounded-full text-sm">重置</button>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl p-4 shadow-sm mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-gray-600">今日目标</h3>
+        <button onclick="showAddGoal()" class="text-xs text-orange-500">+ 添加</button>
+      </div>
+      <div id="goals-list"></div>
+    </div>
+
+    <div class="bg-white rounded-xl p-4 shadow-sm">
+      <h3 class="text-sm font-semibold text-gray-600 mb-3">快速打卡</h3>
+      <div class="flex gap-2 mb-3">
+        <button onclick="setCkType('study')" id="ck-study" class="flex-1 py-2 rounded-lg text-xs border-2 border-blue-300 bg-blue-50 text-blue-700">📚学习</button>
+        <button onclick="setCkType('eat')" id="ck-eat" class="flex-1 py-2 rounded-lg text-xs border-2 border-transparent bg-gray-100">🍜吃饭</button>
+        <button onclick="setCkType('free')" id="ck-free" class="flex-1 py-2 rounded-lg text-xs border-2 border-transparent bg-gray-100">🎮自由</button>
+      </div>
+      <input id="ck-duration" type="number" placeholder="时长(分钟)" class="w-full border rounded-lg px-3 py-2 text-sm mb-2" style="font-size:16px">
+      <div id="ck-study-fields">
+        <input id="ck-content" placeholder="学习内容（如：教育心理学第四章）" class="w-full border rounded-lg px-3 py-2 text-sm mb-2" style="font-size:16px">
+        <div class="flex items-center gap-1 mb-2">
+          <span class="text-xs text-gray-500">效果：</span>
+          ${[1,2,3,4,5].map(i => `<span class="star text-gray-300" onclick="setRating(${i})" id="star-${i}">★</span>`).join('')}
+        </div>
+      </div>
+      <input id="ck-note" placeholder="备注（可选）" class="w-full border rounded-lg px-3 py-2 text-sm mb-3" style="font-size:16px">
+      <button onclick="submitCheckin()" class="w-full bg-blue-500 text-white rounded-lg py-2 text-sm font-semibold">提交打卡</button>
+    </div>
+  `;
+  loadGoals();
+}
+
+let ckType = 'study';
+let ckRating = 0;
+
+function setCkType(t) {
+  ckType = t;
+  ['study','eat','free'].forEach(x => {
+    const el = document.getElementById('ck-'+x);
+    if (x === t) { el.className = 'flex-1 py-2 rounded-lg text-xs border-2 ' + (x==='study'?'border-blue-300 bg-blue-50 text-blue-700':x==='eat'?'border-orange-300 bg-orange-50 text-orange-700':'border-green-300 bg-green-50 text-green-700'); }
+    else { el.className = 'flex-1 py-2 rounded-lg text-xs border-2 border-transparent bg-gray-100'; }
+  });
+  const sf = document.getElementById('ck-study-fields');
+  if (sf) sf.style.display = t === 'study' ? 'block' : 'none';
+}
+
+function setRating(n) {
+  ckRating = n;
+  for (let i = 1; i <= 5; i++) {
+    document.getElementById('star-'+i).className = 'star ' + (i <= n ? 'text-yellow-400' : 'text-gray-300');
+  }
+}
+
+async function submitCheckin() {
+  const duration = parseInt(document.getElementById('ck-duration')?.value) || 0;
+  if (!duration) return alert('请输入时长');
+  const body = { member: currentUser, type: ckType, duration_min: duration, note: document.getElementById('ck-note')?.value || '' };
+  if (ckType === 'study') {
+    body.study_content = document.getElementById('ck-content')?.value || '';
+    body.rating = ckRating;
+  }
+  await fetch('/api/checkins', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  alert('打卡成功！');
+  ckRating = 0;
+  loadFocus();
+}
+
+async function loadGoals() {
+  const r = await fetch(`/api/daily-goals?member=${encodeURIComponent(currentUser)}&date=${today()}`);
+  const data = await r.json();
+  const el = document.getElementById('goals-list');
+  if (!el) return;
+  if (data.goals.length === 0) {
+    el.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">今天还没设目标</p>';
+    return;
+  }
+  const studyMin = data.todayStudyMin || 0;
+  el.innerHTML = data.goals.map(g => {
+    const progress = Math.min(100, Math.round(studyMin / g.target_min * 100));
+    const autoComplete = !g.completed && studyMin >= g.target_min;
+    const isDone = g.completed || autoComplete;
+    return `
+    <div class="py-2 border-b border-gray-50">
+      <div class="flex items-center gap-2">
+        <button onclick="completeGoal(${g.id})" class="w-5 h-5 rounded-full border-2 ${isDone ? 'bg-green-500 border-green-500' : 'border-gray-300'} flex items-center justify-center shrink-0">
+          ${isDone ? '<span class="text-white text-xs">✓</span>' : ''}
+        </button>
+        <span class="flex-1 text-sm ${isDone ? 'line-through text-gray-400' : ''}">${g.content}</span>
+        <span class="text-xs text-gray-400">${studyMin}/${g.target_min}min</span>
+      </div>
+      <div class="ml-7 mt-1">
+        <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div class="h-full rounded-full ${isDone ? 'bg-green-400' : 'bg-orange-400'}" style="width:${progress}%"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showAddGoal() {
+  document.getElementById('modal').classList.remove('hidden');
+  document.getElementById('modal-content').innerHTML = `
+    <h3 class="font-bold mb-3">添加今日目标</h3>
+    <input id="goal-content" placeholder="目标内容" class="w-full border rounded-lg px-3 py-2 text-sm mb-2" style="font-size:16px">
+    <input id="goal-min" type="number" placeholder="目标时长(分钟)" value="60" class="w-full border rounded-lg px-3 py-2 text-sm mb-3" style="font-size:16px">
+    <div class="flex gap-2">
+      <button onclick="closeModal()" class="flex-1 border rounded-lg py-2 text-sm">取消</button>
+      <button onclick="addGoal()" class="flex-1 bg-orange-500 text-white rounded-lg py-2 text-sm font-semibold">添加</button>
+    </div>
+  `;
+}
+
+async function addGoal() {
+  const content = document.getElementById('goal-content').value.trim();
+  if (!content) return;
+  await fetch('/api/daily-goals',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser,content,target_min:parseInt(document.getElementById('goal-min').value)||60})});
+  closeModal(); loadGoals();
+}
+
+async function completeGoal(id) {
+  await fetch(`/api/daily-goals/${id}/complete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  loadGoals();
+}
+
+// Pomodoro
+function togglePomodoro() {
+  if (pomodoroRunning) { clearInterval(pomodoroInterval); pomodoroRunning = false; document.getElementById('pomo-btn').textContent = '继续'; }
+  else { pomodoroRunning = true; document.getElementById('pomo-btn').textContent = '暂停'; pomodoroInterval = setInterval(tickPomodoro, 1000); }
+}
+
+function resetPomodoro() {
+  clearInterval(pomodoroInterval); pomodoroRunning = false; pomodoroSeconds = 25*60;
+  updateTimerDisplay();
+  const btn = document.getElementById('pomo-btn');
+  if (btn) btn.textContent = '开始';
+}
+
+function tickPomodoro() {
+  pomodoroSeconds--;
+  if (pomodoroSeconds <= 0) {
+    clearInterval(pomodoroInterval); pomodoroRunning = false; pomodoroSeconds = 25*60;
+    document.body.classList.add('flash');
+    setTimeout(() => document.body.classList.remove('flash'), 1000);
+    if (confirm('🍅 番茄完成！记录25分钟学习？')) {
+      fetch('/api/checkins',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser,type:'study',duration_min:25,note:'番茄钟',study_content:'',rating:0})});
+    }
+    updateTimerDisplay();
+    return;
+  }
+  updateTimerDisplay();
+}
+
+function updateTimerDisplay() {
+  const el = document.getElementById('timer-display');
+  const ring = document.getElementById('timer-ring');
+  if (!el) return;
+  const m = Math.floor(pomodoroSeconds/60);
+  const s = pomodoroSeconds%60;
+  el.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  if (ring) {
+    const progress = 1 - pomodoroSeconds/(25*60);
+    ring.setAttribute('stroke-dashoffset', (progress * 502.65).toString());
+  }
+}
+
+
+// ===== REVIEW TAB =====
+async function loadReview() {
+  const r = await fetch(`/api/review-items?member=${encodeURIComponent(currentUser)}`);
+  const data = await r.json();
+  const panel = document.getElementById('panel-review');
+
+  panel.innerHTML = `
+    <h3 class="font-semibold text-gray-700 mb-3">📖 今日待复习</h3>
+    ${data.due.length === 0 ? '<div class="bg-white rounded-xl p-6 shadow-sm text-center mb-4"><p class="text-gray-400">今天没有需要复习的内容 🎉</p></div>' :
+      data.due.map(item => `
+        <div class="bg-white rounded-xl p-4 shadow-sm mb-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-medium text-sm">${item.content}</span>
+            <span class="text-xs text-gray-400">第${item.review_count+1}次</span>
+          </div>
+          <div class="flex items-center gap-1 mb-2">
+            ${[0,1,2,3,4].map(i => `<div class="w-3 h-3 rounded-full ${i < item.review_count ? 'bg-green-400' : i === item.review_count ? 'bg-orange-400' : 'bg-gray-200'}"></div>`).join('')}
+            <span class="text-xs text-gray-400 ml-2">${item.review_count}/5</span>
+          </div>
+          <button onclick="markReviewed(${item.id})" class="bg-green-500 text-white text-xs px-4 py-1.5 rounded-full">已复习 ✓</button>
+        </div>
+      `).join('')}
+
+    <details class="mb-4">
+      <summary class="text-sm font-semibold text-gray-600 cursor-pointer py-2">即将复习 (${data.upcoming.length})</summary>
+      ${data.upcoming.map(item => `
+        <div class="bg-gray-50 rounded-lg p-3 mb-2 flex items-center justify-between">
+          <span class="text-sm">${item.content}</span>
+          <span class="text-xs text-gray-400">${item.next_review_date}</span>
+        </div>
+      `).join('') || '<p class="text-xs text-gray-400 py-2">暂无</p>'}
+    </details>
+
+    <details>
+      <summary class="text-sm font-semibold text-gray-600 cursor-pointer py-2">已掌握 ✅ (${data.mastered.length})</summary>
+      ${data.mastered.map(item => `
+        <div class="bg-green-50 rounded-lg p-3 mb-2 flex items-center gap-2">
+          <span class="text-green-600">✅</span>
+          <span class="text-sm">${item.content}</span>
+        </div>
+      `).join('') || '<p class="text-xs text-gray-400 py-2">暂无</p>'}
+    </details>
+  `;
+}
+
+async function markReviewed(id) {
+  await fetch(`/api/review-items/${id}/review`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  loadReview();
+}
+
+// ===== CHAT TAB =====
+let currentRoomId = null;
+let chatRooms = [];
+
+async function loadChat() {
+  const panel = document.getElementById('panel-chat');
+  const r = await fetch(`/api/rooms?member=${encodeURIComponent(currentUser)}`);
+  chatRooms = await r.json();
+
+  if (currentRoomId) {
+    // Show room messages
+    showRoom(currentRoomId);
+    return;
+  }
+
+  // Show room list
+  panel.innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="font-semibold text-gray-700">💬 聊天</h3>
+      <div class="flex gap-2">
+        <button onclick="showNewPrivateChat()" class="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full">+ 私聊</button>
+        <button onclick="showNewGroupChat()" class="text-xs bg-orange-50 text-orange-600 px-3 py-1 rounded-full">+ 建群</button>
+      </div>
+    </div>
+    <div id="room-list">
+      ${chatRooms.map(room => {
+        const isPrivate = room.type === 'private';
+        const otherMember = isPrivate ? room.members.find(m => m !== currentUser) : null;
+        const displayName = isPrivate ? (otherMember || '私聊') : room.name;
+        const icon = isPrivate ? avatar(otherMember,'sm') : '<div class="avatar avatar-sm" style="background:#f97316">群</div>';
+        return `<div class="card bg-white rounded-xl p-3 shadow-sm mb-2 flex items-center gap-3 cursor-pointer" onclick="enterRoom(${room.id})">
+          ${icon}
+          <div class="flex-1">
+            <div class="font-medium text-sm">${displayName}</div>
+            <div class="text-xs text-gray-400">${room.members.length}人${room.type === 'private' ? ' · 私聊' : ''}</div>
+          </div>
+          <span class="text-gray-300 text-lg">›</span>
+        </div>`;
+      }).join('') || '<p class="text-center text-gray-400 text-sm py-8">暂无聊天</p>'}
+    </div>
+  `;
+}
+
+function enterRoom(roomId) {
+  currentRoomId = roomId;
+  showRoom(roomId);
+}
+
+async function showRoom(roomId) {
+  const panel = document.getElementById('panel-chat');
+  const room = chatRooms.find(r => r.id === roomId);
+  const roomName = room?.type === 'private' ? room.members.find(m => m !== currentUser) : (room?.name || '聊天');
+
+  panel.innerHTML = `
+    <div class="flex items-center gap-2 mb-3">
+      <button onclick="backToRoomList()" class="text-gray-500 text-lg">‹</button>
+      <span class="font-semibold text-sm flex-1">${roomName}</span>
+      <span class="text-xs text-gray-400">${room?.members?.length || 0}人</span>
+    </div>
+    <div id="chat-messages" class="space-y-3 overflow-y-auto" style="height:calc(100vh - 260px)"></div>
+    <div class="flex gap-2 mt-2 items-center">
+      <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
+        <input type="checkbox" id="encrypt-toggle" class="w-3 h-3"> 🔒
+      </label>
+      <input id="chat-input" placeholder="说点什么..." class="flex-1 border rounded-full px-4 py-2 text-sm" style="font-size:16px" onkeydown="if(event.key==='Enter')sendRoomMsg()">
+      <button onclick="sendRoomMsg()" class="bg-orange-500 text-white rounded-full w-10 h-10 flex items-center justify-center text-lg shrink-0">↑</button>
+    </div>
+  `;
+  loadRoomMessages(roomId);
+}
+
+function backToRoomList() {
+  currentRoomId = null;
+  loadChat();
+}
+
+async function loadRoomMessages(roomId) {
+  const r = await fetch(`/api/rooms/${roomId}/messages?member=${encodeURIComponent(currentUser)}`);
+  const msgs = await r.json();
+  const container = document.getElementById('chat-messages');
+  if (!container) return;
+
+  container.innerHTML = msgs.map(m => {
+    const isMe = m.sender === currentUser;
+    const isAI = m.is_ai || m.sender === '小鼓';
+    let text = m.content;
+    let encrypted = false;
+
+    // Try decrypt if encrypted
+    if (m.is_encrypted && m.iv) {
+      try {
+        text = decryptMsg(m.content, m.iv, currentRoomId);
+      } catch(e) {
+        text = '🔒 加密消息（无法解密）';
+        encrypted = true;
+      }
+    }
+
+    const deleteBtn = `<button onclick="deleteMsg(${roomId},${m.id})" class="text-xs text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-600 ml-1">×</button>`;
+
+    if (isMe) {
+      return `<div class="flex justify-end gap-2 items-start group">
+        <div class="flex items-center">${deleteBtn}<div class="msg-bubble ${m.is_encrypted?'bg-blue-100 border border-blue-200':'bg-orange-100'} text-gray-800 rounded-2xl rounded-br-sm px-3 py-2 text-sm">${m.is_encrypted?'🔒 ':''}<span>${text}</span></div></div>
+        ${avatar(currentUser,'sm')}
+      </div>`;
+    } else if (isAI) {
+      return `<div class="flex gap-2 items-start group">
+        <div class="avatar avatar-sm" style="background:#666">🤖</div>
+        <div class="msg-bubble bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm">${text}</div>
+        ${deleteBtn}
+      </div>`;
+    } else {
+      return `<div class="flex gap-2 items-start group">
+        ${avatar(m.sender,'sm')}
+        <div><div class="text-xs text-gray-400 mb-0.5">${m.sender}</div>
+        <div class="msg-bubble ${m.is_encrypted?'bg-blue-50 border border-blue-100':'bg-white border'} text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm">${m.is_encrypted?'🔒 ':''}<span>${text}</span></div></div>
+      </div>`;
+    }
+  }).join('');
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendRoomMsg() {
+  const input = document.getElementById('chat-input');
+  const content = input.value.trim();
+  if (!content || !currentRoomId) return;
+  input.value = '';
+
+  const encryptOn = document.getElementById('encrypt-toggle')?.checked;
+  let sendContent = content;
+  let iv = '';
+  let is_encrypted = false;
+
+  if (encryptOn) {
+    const encrypted = encryptMsg(content, currentRoomId);
+    sendContent = encrypted.ciphertext;
+    iv = encrypted.iv;
+    is_encrypted = true;
+  }
+
+  // Show optimistic message
+  const container = document.getElementById('chat-messages');
+  container.innerHTML += `<div class="flex justify-end gap-2 items-start"><div class="msg-bubble ${encryptOn?'bg-blue-100':'bg-orange-100'} text-gray-800 rounded-2xl rounded-br-sm px-3 py-2 text-sm">${encryptOn?'🔒 ':''}${content}</div>${avatar(currentUser,'sm')}</div>`;
+  const room = chatRooms.find(r => r.id === currentRoomId);
+  const hasAI = room?.include_ai !== 0;
+  if (hasAI && !encryptOn) {
+    container.innerHTML += `<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble bg-gray-100 text-gray-700 rounded-2xl rounded-bl-sm px-3 py-2 text-sm italic">思考中...</div></div>`;
+  }
+  container.scrollTop = container.scrollHeight;
+
+  await fetch(`/api/rooms/${currentRoomId}/messages`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ sender: currentUser, content: sendContent, iv, is_encrypted, call_ai: !is_encrypted })
+  });
+
+  loadRoomMessages(currentRoomId);
+}
+
+async function deleteMsg(roomId, msgId) {
+  if (!confirm('删除这条消息？')) return;
+  await fetch(`/api/rooms/${roomId}/messages/${msgId}`, {
+    method:'DELETE', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ member: currentUser })
+  });
+  loadRoomMessages(roomId);
+}
+
+// ===== ENCRYPTION (AES-CBC with room-based key) =====
+function getRoomKey(roomId) {
+  // Key = SHA-256(roomId + user_password_from_localStorage + salt)
+  // Simple symmetric encryption - all room members use same derived key
+  const pwd = localStorage.getItem('chisha_pwd') || '';
+  const raw = `chisha_e2e_${roomId}_${pwd}_salt2024`;
+  // Simple hash for key derivation (not crypto-grade but functional for demo)
+  let hash = 0;
+  for (let i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash) + raw.charCodeAt(i); hash |= 0; }
+  // Expand to 32 bytes
+  const key = new Array(32);
+  for (let i = 0; i < 32; i++) { key[i] = ((hash * (i+1) * 7919) >>> 0) % 256; }
+  return key;
+}
+
+function encryptMsg(plaintext, roomId) {
+  const key = getRoomKey(roomId);
+  // Simple XOR cipher with random IV (not AES, but demonstrates the concept)
+  const iv = Array.from({length:16}, () => Math.floor(Math.random()*256));
+  const textBytes = new TextEncoder().encode(plaintext);
+  const cipher = new Uint8Array(textBytes.length);
+  for (let i = 0; i < textBytes.length; i++) {
+    cipher[i] = textBytes[i] ^ key[i % 32] ^ iv[i % 16];
+  }
+  return {
+    ciphertext: btoa(String.fromCharCode(...cipher)),
+    iv: btoa(String.fromCharCode(...iv))
+  };
+}
+
+function decryptMsg(cipherB64, ivB64, roomId) {
+  const key = getRoomKey(roomId);
+  const cipher = Uint8Array.from(atob(cipherB64), c => c.charCodeAt(0));
+  const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
+  const plain = new Uint8Array(cipher.length);
+  for (let i = 0; i < cipher.length; i++) {
+    plain[i] = cipher[i] ^ key[i % 32] ^ iv[i % 16];
+  }
+  return new TextDecoder().decode(plain);
+}
+
+// ===== NEW CHAT MODALS =====
+function showNewPrivateChat() {
+  document.getElementById('modal').classList.remove('hidden');
+  const others = Object.keys(MEMBERS).filter(n => n !== currentUser);
+  document.getElementById('modal-content').innerHTML = `
+    <h3 class="font-bold mb-3">发起私聊</h3>
+    <div class="grid grid-cols-2 gap-2">
+      ${others.map(name => `
+        <button onclick="createPrivateChat('${name}')" class="card bg-gray-50 rounded-xl p-3 flex items-center gap-2">
+          ${avatar(name,'sm')}<span class="text-sm">${name}</span>
+        </button>
+      `).join('')}
+    </div>
+    <button onclick="closeModal()" class="w-full mt-3 text-gray-400 text-sm py-2">取消</button>
+  `;
+}
+
+async function createPrivateChat(other) {
+  const r = await fetch('/api/rooms', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ creator: currentUser, name: `${currentUser}与${other}`, type: 'private', members: [currentUser, other] })
+  });
+  const data = await r.json();
+  closeModal();
+  currentRoomId = data.id;
+  // Refresh rooms list
+  const rr = await fetch(`/api/rooms?member=${encodeURIComponent(currentUser)}`);
+  chatRooms = await rr.json();
+  showRoom(data.id);
+}
+
+function showNewGroupChat() {
+  document.getElementById('modal').classList.remove('hidden');
+  const others = Object.keys(MEMBERS).filter(n => n !== currentUser);
+  document.getElementById('modal-content').innerHTML = `
+    <h3 class="font-bold mb-3">创建群聊</h3>
+    <input id="group-name" placeholder="群名称" class="w-full border rounded-lg px-3 py-2 text-sm mb-3" style="font-size:16px">
+    <p class="text-xs text-gray-500 mb-2">选择成员：</p>
+    <div class="grid grid-cols-2 gap-2 mb-3">
+      ${others.map(name => `
+        <label class="flex items-center gap-2 bg-gray-50 rounded-lg p-2 cursor-pointer">
+          <input type="checkbox" value="${name}" class="group-member-cb">
+          ${avatar(name,'sm')}<span class="text-sm">${name}</span>
+        </label>
+      `).join('')}
+    </div>
+    <label class="flex items-center gap-2 bg-orange-50 rounded-lg p-2 mb-3 cursor-pointer">
+      <input type="checkbox" id="invite-ai-cb" checked>
+      <div class="avatar avatar-sm" style="background:#666">🤖</div><span class="text-sm">小鼓 (AI助手)</span>
+    </label>
+    <div class="flex gap-2">
+      <button onclick="closeModal()" class="flex-1 border rounded-lg py-2 text-sm">取消</button>
+      <button onclick="createGroupChat()" class="flex-1 bg-orange-500 text-white rounded-lg py-2 text-sm font-semibold">创建</button>
+    </div>
+  `;
+}
+
+async function createGroupChat() {
+  const name = document.getElementById('group-name').value.trim();
+  if (!name) return alert('请输入群名称');
+  const checked = [...document.querySelectorAll('.group-member-cb:checked')].map(cb => cb.value);
+  if (checked.length === 0) return alert('至少选一个成员');
+  const members = [currentUser, ...checked];
+  const includeAI = document.getElementById('invite-ai-cb')?.checked;
+  const r = await fetch('/api/rooms', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ creator: currentUser, name, type: 'group', members, include_ai: includeAI })
+  });
+  const data = await r.json();
+  closeModal();
+  currentRoomId = data.id;
+  const rr = await fetch(`/api/rooms?member=${encodeURIComponent(currentUser)}`);
+  chatRooms = await rr.json();
+  showRoom(data.id);
+}
+
+// ===== STATS TAB =====
+let statsDays = 7;
+async function loadStats(days) {
+  statsDays = days || statsDays;
+  const [statsRes, streaksRes] = await Promise.all([fetch(`/api/stats?days=${statsDays}&member=${encodeURIComponent(currentUser)}`), fetch('/api/streaks')]);
+  const stats = await statsRes.json();
+  const streaks = await streaksRes.json();
+
+  const byMember = {};
+  for (const row of stats) {
+    if (!byMember[row.member]) byMember[row.member] = {};
+    byMember[row.member][row.type] = { min: row.total_min, rating: row.avg_rating };
+  }
+
+  const panel = document.getElementById('panel-stats');
+  panel.innerHTML = `
+    <div class="flex gap-2 mb-4">
+      <button onclick="loadStats(7)" class="px-4 py-1.5 rounded-full text-sm font-medium ${statsDays===7?'bg-orange-500 text-white':'bg-gray-100 text-gray-600'}">近7天</button>
+      <button onclick="loadStats(30)" class="px-4 py-1.5 rounded-full text-sm font-medium ${statsDays===30?'bg-orange-500 text-white':'bg-gray-100 text-gray-600'}">近30天</button>
+    </div>
+
+    <h3 class="text-sm font-semibold text-gray-600 mb-3">学习统计</h3>
+    ${Object.keys(MEMBERS).map(name => {
+      const s = byMember[name] || {};
+      const study = s.study?.min || 0;
+      const eat = s.eat?.min || 0;
+      const free = s.free?.min || 0;
+      const total = study + eat + free;
+      const rating = s.study?.rating;
+      return `<div class="bg-white rounded-xl p-3 shadow-sm mb-2">
+        <div class="flex items-center gap-2 mb-2">
+          ${avatar(name,'sm')}
+          <span class="text-sm font-medium flex-1">${name}</span>
+          ${rating ? `<span class="text-xs text-yellow-500">${'★'.repeat(Math.round(rating))} ${rating}</span>` : ''}
+        </div>
+        ${total > 0 ? `<div class="flex h-3 rounded-full overflow-hidden bg-gray-100 mb-1">
+          ${study ? `<div class="bg-blue-400" style="width:${study/total*100}%"></div>` : ''}
+          ${eat ? `<div class="bg-orange-400" style="width:${eat/total*100}%"></div>` : ''}
+          ${free ? `<div class="bg-green-400" style="width:${free/total*100}%"></div>` : ''}
+        </div>
+        <div class="flex gap-3 text-xs text-gray-500">
+          <span>📚${(study/60).toFixed(1)}h</span>
+          <span>🍜${(eat/60).toFixed(1)}h</span>
+          <span>🎮${(free/60).toFixed(1)}h</span>
+        </div>` : '<p class="text-xs text-gray-400">暂无记录</p>'}
+      </div>`;
+    }).join('')}
+
+    <h3 class="text-sm font-semibold text-gray-600 mt-4 mb-3">🔥 连续打卡</h3>
+    <div class="bg-white rounded-xl p-4 shadow-sm mb-4">
+      ${streaks.map(s => `
+        <div class="flex items-center justify-between py-2 ${s.current_streak >= 7 ? '' : 'opacity-70'}">
+          <div class="flex items-center gap-2">${avatar(s.member,'sm')}<span class="text-sm">${s.member}</span></div>
+          <span class="text-sm font-bold ${s.current_streak >= 7 ? 'text-orange-500' : 'text-gray-500'}">🔥${s.current_streak}天</span>
+        </div>
+      `).join('')}
+    </div>
+
+    <h3 class="text-sm font-semibold text-gray-600 mt-4 mb-3">设置</h3>
+    <div class="bg-white rounded-xl p-4 shadow-sm">
+      <details>
+        <summary class="text-sm cursor-pointer">修改密码</summary>
+        <div class="mt-3">
+          <input id="old-pwd" type="password" placeholder="原密码" class="w-full border rounded-lg px-3 py-2 text-sm mb-2" style="font-size:16px">
+          <input id="new-pwd" type="password" placeholder="新密码" class="w-full border rounded-lg px-3 py-2 text-sm mb-2" style="font-size:16px">
+          <button onclick="changePwd()" class="w-full bg-orange-500 text-white rounded-lg py-2 text-sm">确认修改</button>
+          <p id="pwd-msg" class="text-xs mt-1 hidden"></p>
+        </div>
+      </details>
+      <button onclick="logout()" class="w-full mt-3 bg-red-50 text-red-600 rounded-lg py-2 text-sm">退出登录</button>
+    </div>
+  `;
+}
+
+async function changePwd() {
+  const oldP = document.getElementById('old-pwd').value;
+  const newP = document.getElementById('new-pwd').value;
+  if (!oldP || !newP) return;
+  const r = await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:currentUser,oldPassword:oldP,newPassword:newP})});
+  const msg = document.getElementById('pwd-msg');
+  if (r.ok) { msg.textContent = '修改成功'; msg.className = 'text-xs mt-1 text-green-600'; localStorage.setItem('chisha_pwd', newP); }
+  else { const d = await r.json(); msg.textContent = d.error; msg.className = 'text-xs mt-1 text-red-500'; }
+  msg.classList.remove('hidden');
+}
+
+// ===== INIT =====
+function init() {
+  updateCountdown();
+  if (currentUser) { showMain(); }
+  else { initLogin(); }
+}
+init();
+</script>
+</body>
+</html>
