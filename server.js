@@ -693,7 +693,7 @@ if (existingRooms.c === 0) {
     { floor: 1, name: '一楼自习室', total_seats: 20, description: '安静舒适的学习空间', owner: '' },
     { floor: 2, name: '二楼自习室', total_seats: 20, description: '明亮宽敞的学习区域', owner: '' },
     { floor: 3, name: '三楼自习室', total_seats: 20, description: '高层视野开阔', owner: '' },
-    { floor: 4, name: '天台自习室', total_seats: 1, description: '王朔专属天台自习室', owner: '王朔' }
+    { floor: 4, name: '天台自习室', total_seats: 1, description: '顶楼天台，独享宁静', owner: '' }
   ];
   const insertRoom = db.prepare('INSERT INTO study_rooms (floor, name, total_seats, description, owner) VALUES (?, ?, ?, ?, ?)');
   for (const r of rooms) {
@@ -705,6 +705,27 @@ if (existingRooms.c === 0) {
     }
   }
 }
+// Fix: remove owner restriction from 天台
+db.prepare("UPDATE study_rooms SET owner = '', description = '顶楼天台，独享宁静' WHERE name = '天台自习室'").run();
+
+// Study room inline chat with AI
+app.post('/api/study-rooms/chat', async (req, res) => {
+  const { member, message, history } = req.body;
+  if (!member || !message) return res.status(400).json({ error: '缺少参数' });
+  
+  const user = db.prepare('SELECT goal FROM users WHERE name = ?').get(member);
+  const sys = AI_CONFIG.systemPrompt + `\n\n你现在在虚拟自习室里陪${member}学习。TA的目标是${user?.goal || '未知'}。
+保持简短（1-3句话），像一个安静陪伴的学习伙伴。如果TA问学科问题可以详细回答。`;
+  
+  const messages = (history || []).slice(-8).map(m => ({
+    role: m.sender === '小鼓' ? 'assistant' : 'user',
+    content: m.sender === '小鼓' ? m.text : `${m.sender}：${m.text}`
+  }));
+  messages.push({ role: 'user', content: message });
+  
+  const reply = await callAI(messages, sys);
+  res.json({ reply });
+});
 
 // Get all rooms with occupancy
 app.get('/api/study-rooms', (req, res) => {

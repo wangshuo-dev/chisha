@@ -87,7 +87,16 @@
         <p class="text-xs opacity-60" id="imm-scene"></p>
       </div>
     </div>
-    <div class="p-4"><div class="bg-white/10 backdrop-blur rounded-2xl p-3"><p class="text-white text-xs opacity-70 mb-2">同在自习室：</p><div id="imm-peers" class="flex gap-2 flex-wrap"></div></div></div>
+    <div class="p-4">
+      <div class="bg-white/10 backdrop-blur rounded-2xl p-3 mb-3"><p class="text-white text-xs opacity-70 mb-2">同在自习室：</p><div id="imm-peers" class="flex gap-2 flex-wrap"></div></div>
+      <div class="bg-white/10 backdrop-blur rounded-2xl p-3">
+        <div id="imm-chat-msgs" class="max-h-32 overflow-y-auto mb-2 space-y-1"></div>
+        <div class="flex gap-2">
+          <input id="imm-chat-input" placeholder="和小鼓聊聊 / 同室≤2人可互聊" class="flex-1 bg-white/20 text-white placeholder-white/50 rounded-full px-3 py-1.5 text-sm outline-none" style="font-size:16px" onkeydown="if(event.key==='Enter')sendImmChat()">
+          <button onclick="sendImmChat()" class="bg-white/30 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm">↑</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -172,17 +181,42 @@ async function createActivity(){const title=document.getElementById('act-title')
 async function loadStudyRooms(){
   const [roomsRes,mySeatRes]=await Promise.all([fetch('/api/study-rooms'),fetch(`/api/study-rooms/my-seat?member=${encodeURIComponent(currentUser)}`)]);
   const rooms=await roomsRes.json(),mySeat=await mySeatRes.json();
-  const floorColors=['','from-blue-500 to-cyan-500','from-purple-500 to-pink-500','from-orange-500 to-red-500','from-green-500 to-teal-500'];
-  const floorEmoji=['','🏢','🏢','🏢','🌤️'];
+  const floorStyle={
+    1:{gradient:'from-sky-400 to-blue-600',emoji:'📘',icon:'❄️',feature:'有空调 · 安静'},
+    2:{gradient:'from-violet-500 to-purple-700',emoji:'📗',icon:'☕',feature:'有咖啡 · 明亮'},
+    3:{gradient:'from-amber-400 to-orange-600',emoji:'📙',icon:'🌿',feature:'有绿植 · 开阔'},
+    4:{gradient:'from-emerald-400 to-teal-600',emoji:'📕',icon:'🌤️',feature:'露天 · 独处'}
+  };
   document.getElementById('panel-room').innerHTML=`
-    ${mySeat.seated?`<div class="card bg-green-50 border border-green-200 p-4 shadow-sm mb-4"><div class="flex items-center justify-between"><div><p class="text-sm font-semibold text-green-700">正在学习中</p><p class="text-xs text-green-600">${mySeat.room_name} · ${mySeat.seat_number}号座 · ${SCENES[mySeat.scene]?.emoji||'🌊'}${mySeat.scene}</p></div><button onclick="enterImmersive('${mySeat.room_name}','${mySeat.scene}','${mySeat.seated_at}')" class="bg-green-500 text-white text-xs px-3 py-1.5 rounded-full">进入</button></div></div>`:''}
-    <h3 class="text-sm font-semibold text-gray-600 mb-3">选择自习室</h3>
-    ${rooms.map(r=>`<div class="card bg-gradient-to-r ${floorColors[r.floor]} p-4 shadow-md mb-3 text-white cursor-pointer" onclick="enterFloor(${r.id})">
-      <div class="flex items-center justify-between">
-        <div><p class="font-bold">${floorEmoji[r.floor]} ${r.name}</p><p class="text-xs opacity-80">${r.description}</p></div>
-        <div class="text-right"><p class="text-2xl font-bold">${r.occupied}/${r.total_seats}</p><p class="text-xs opacity-80">在座</p></div>
-      </div>
-    </div>`).join('')}`;
+    ${mySeat.seated?`<div class="card bg-green-50 border border-green-200 p-4 shadow-sm mb-4"><div class="flex items-center justify-between"><div><p class="text-sm font-semibold text-green-700">📖 正在学习中</p><p class="text-xs text-green-600 mt-0.5">${mySeat.room_name} · ${mySeat.seat_number}号座 · ${SCENES[mySeat.scene]?.emoji||'🌊'}${mySeat.scene}</p></div><button onclick="enterImmersive('${mySeat.room_name}','${mySeat.scene}','${mySeat.seated_at}')" class="bg-green-500 text-white text-xs px-4 py-2 rounded-full font-medium shadow-sm">进入学习</button></div></div>`:''}
+    <div class="flex items-center gap-2 mb-4">
+      <span class="text-lg">🏫</span><h3 class="font-bold text-gray-800">虚拟自习楼</h3>
+    </div>
+    <div class="relative pl-6 border-l-2 border-gray-200">
+      ${rooms.sort((a,b)=>b.floor-a.floor).map(r=>{const s=floorStyle[r.floor]||floorStyle[1];return`
+        <div class="relative mb-4">
+          <div class="absolute -left-[25px] w-4 h-4 rounded-full bg-white border-2 border-gray-300 top-4"></div>
+          <div class="card bg-gradient-to-r ${s.gradient} p-4 shadow-lg text-white cursor-pointer hover:shadow-xl transition-shadow" onclick="enterFloor(${r.id})">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-lg">${s.emoji}</span>
+                  <span class="font-bold text-base">${r.floor}F · ${r.name}</span>
+                </div>
+                <div class="flex items-center gap-2 text-xs opacity-90">
+                  <span>${s.icon} ${s.feature}</span>
+                  <span>· ${r.description}</span>
+                </div>
+              </div>
+              <div class="text-right">
+                <p class="text-2xl font-bold">${r.occupied}<span class="text-sm font-normal">/${r.total_seats}</span></p>
+                <p class="text-xs opacity-80">${r.occupied>0?'有人学习':'空闲'}</p>
+              </div>
+            </div>
+          </div>
+        </div>`;}).join('')}
+    </div>
+    <p class="text-xs text-gray-400 text-center mt-2">选择楼层 → 选座位 → 选风景 → 开始学习</p>`;
 }
 
 async function enterFloor(roomId){
@@ -272,6 +306,62 @@ async function changeScene(scene){
   document.getElementById('scene-bg').style.background=SCENES[scene]?.bg||SCENES['大海'].bg;
   document.getElementById('imm-scene').textContent=(SCENES[scene]?.emoji||'🌊')+' '+scene;
   closeModal();
+}
+
+// === IMMERSIVE CHAT (自习室内聊天) ===
+let immChatHistory=[];
+async function sendImmChat(){
+  const input=document.getElementById('imm-chat-input');
+  const text=input.value.trim();
+  if(!text)return;
+  input.value='';
+  
+  // Add user message to display
+  immChatHistory.push({sender:currentUser,text});
+  renderImmChat();
+  
+  // Get peers to determine if we can chat with others
+  const mySeatRes=await fetch(`/api/study-rooms/my-seat?member=${encodeURIComponent(currentUser)}`);
+  const mySeat=await mySeatRes.json();
+  if(!mySeat.seated)return;
+  const seatsRes=await fetch(`/api/study-rooms/${mySeat.room_id}/seats`);
+  const seats=await seatsRes.json();
+  const occupiedSeats=seats.filter(s=>s.member&&s.member!=='');
+  
+  // Always call AI (小鼓)
+  const aiMessages=immChatHistory.slice(-10).map(m=>({
+    role:m.sender==='小鼓'?'assistant':'user',
+    content:m.sender==='小鼓'?m.text:`${m.sender}说：${m.text}`
+  }));
+  
+  // Show thinking
+  immChatHistory.push({sender:'小鼓',text:'思考中...',thinking:true});
+  renderImmChat();
+  
+  try{
+    const r=await fetch('/api/study-rooms/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser,message:text,history:immChatHistory.filter(m=>!m.thinking)})});
+    const data=await r.json();
+    immChatHistory=immChatHistory.filter(m=>!m.thinking);
+    if(data.reply){
+      immChatHistory.push({sender:'小鼓',text:data.reply});
+    }
+  }catch(e){
+    immChatHistory=immChatHistory.filter(m=>!m.thinking);
+    immChatHistory.push({sender:'小鼓',text:'网络不太好，稍后再试~'});
+  }
+  renderImmChat();
+}
+
+function renderImmChat(){
+  const container=document.getElementById('imm-chat-msgs');
+  container.innerHTML=immChatHistory.slice(-8).map(m=>{
+    const isMe=m.sender===currentUser;
+    const isAI=m.sender==='小鼓';
+    if(isMe)return`<div class="flex justify-end"><div class="bg-white/30 text-white rounded-xl px-2.5 py-1 text-xs max-w-[70%]">${m.text}</div></div>`;
+    if(isAI)return`<div class="flex gap-1 items-start"><span class="text-xs">🤖</span><div class="bg-white/20 text-white rounded-xl px-2.5 py-1 text-xs max-w-[70%] ${m.thinking?'opacity-50 italic':''}">${m.text}</div></div>`;
+    return`<div class="flex gap-1 items-start"><span class="text-xs">${avatar(m.sender,'xs')}</span><div class="bg-white/20 text-white rounded-xl px-2.5 py-1 text-xs max-w-[70%]"><span class="opacity-60">${m.sender}:</span> ${m.text}</div></div>`;
+  }).join('');
+  container.scrollTop=container.scrollHeight;
 }
 
 // === FOCUS TAB ===
