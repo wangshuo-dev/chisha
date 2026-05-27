@@ -614,9 +614,17 @@ async function showRoom(roomId) {
       <span class="text-xs text-gray-400">${room?.members?.length || 0}人</span>
     </div>
     <div id="chat-messages" class="space-y-3 overflow-y-auto" style="height:calc(100vh - 260px)"></div>
+    <div id="chat-preview" class="hidden mb-2 p-2 bg-gray-50 rounded-lg relative">
+      <button onclick="clearChatFile()" class="absolute top-1 right-1 text-gray-400 hover:text-red-500 text-sm">✕</button>
+      <img id="chat-preview-img" class="hidden max-h-32 rounded">
+      <div id="chat-preview-file" class="hidden text-xs text-gray-600">📎 <span id="chat-preview-filename"></span></div>
+    </div>
     <div class="flex gap-2 mt-2 items-center">
       <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
         <input type="checkbox" id="encrypt-toggle" class="w-3 h-3"> 🔒
+      </label>
+      <label class="cursor-pointer text-gray-400 hover:text-orange-500 text-lg">
+        <input type="file" id="chat-file-input" class="hidden" accept="image/*,application/pdf,.doc,.docx,.txt" onchange="handleChatFile(this)">📎
       </label>
       <input id="chat-input" placeholder="说点什么..." class="flex-1 border rounded-full px-4 py-2 text-sm" style="font-size:16px" onkeydown="if(event.key==='Enter')sendRoomMsg()">
       <button onclick="sendRoomMsg()" class="bg-orange-500 text-white rounded-full w-10 h-10 flex items-center justify-center text-lg shrink-0">↑</button>
@@ -652,6 +660,15 @@ async function loadRoomMessages(roomId) {
       }
     }
 
+    // Parse file messages
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && parsed.file) {
+        const isImg = parsed.isImage || parsed.file.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+        text = (isImg ? `<img src="${parsed.file}" class="max-w-48 rounded-lg mb-1 cursor-pointer" onclick="window.open('${parsed.file}')">` : `<a href="${parsed.file}" target="_blank" class="text-blue-500 underline text-xs">📎 ${parsed.fileName||'文件'}</a>`) + (parsed.text ? `<div class="mt-1">${parsed.text}</div>` : '');
+      }
+    } catch(e) {}
+
     const deleteBtn = `<button onclick="deleteMsg(${roomId},${m.id})" class="text-xs text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-600 ml-1">×</button>`;
 
     if (isMe) {
@@ -676,19 +693,73 @@ async function loadRoomMessages(roomId) {
   container.scrollTop = container.scrollHeight;
 }
 
+let chatFileData = null; // {type:'image'|'file', name, dataUrl, base64, mime}
+
+function handleChatFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    const isImage = file.type.startsWith('image/');
+    chatFileData = { type: isImage ? 'image' : 'file', name: file.name, dataUrl, base64: dataUrl.split(',')[1], mime: file.type };
+    document.getElementById('chat-preview').classList.remove('hidden');
+    if (isImage) {
+      document.getElementById('chat-preview-img').src = dataUrl;
+      document.getElementById('chat-preview-img').classList.remove('hidden');
+      document.getElementById('chat-preview-file').classList.add('hidden');
+    } else {
+      document.getElementById('chat-preview-img').classList.add('hidden');
+      document.getElementById('chat-preview-file').classList.remove('hidden');
+      document.getElementById('chat-preview-filename').textContent = file.name;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearChatFile() {
+  chatFileData = null;
+  document.getElementById('chat-preview').classList.add('hidden');
+  document.getElementById('chat-preview-img').classList.add('hidden');
+  document.getElementById('chat-preview-file').classList.add('hidden');
+  document.getElementById('chat-file-input').value = '';
+}
+
 async function sendRoomMsg() {
   const input = document.getElementById('chat-input');
   const content = input.value.trim();
-  if (!content || !currentRoomId) return;
+  if (!content && !chatFileData) return;
+  if (!currentRoomId) return;
   input.value = '';
 
   const encryptOn = document.getElementById('encrypt-toggle')?.checked;
+
+  // Upload file first if attached
+  let fileUrl = null;
+  let fileName = null;
+  if (chatFileData) {
+    const uploadRes = await fetch('/api/upload-chat-file', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ data: chatFileData.dataUrl, name: chatFileData.name, mime: chatFileData.mime, member: currentUser })
+    });
+    const uploadData = await uploadRes.json();
+    fileUrl = uploadData.url;
+    fileName = chatFileData.name;
+    clearChatFile();
+  }
+
   let sendContent = content;
+  // Attach file info as JSON in content
+  if (fileUrl) {
+    const msgObj = { text: content, file: fileUrl, fileName: fileName, isImage: chatFileData?.type === 'image' || fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) };
+    sendContent = JSON.stringify(msgObj);
+  }
+
   let iv = '';
   let is_encrypted = false;
 
-  if (encryptOn) {
-    const encrypted = encryptMsg(content, currentRoomId);
+  if (encryptOn && !fileUrl) {
+    const encrypted = encryptMsg(sendContent, currentRoomId);
     sendContent = encrypted.ciphertext;
     iv = encrypted.iv;
     is_encrypted = true;
@@ -696,17 +767,22 @@ async function sendRoomMsg() {
 
   // Show optimistic message
   const container = document.getElementById('chat-messages');
-  container.innerHTML += `<div class="flex justify-end gap-2 items-start"><div class="msg-bubble ${encryptOn?'bg-blue-100':'bg-orange-100'} text-gray-800 rounded-2xl rounded-br-sm px-3 py-2 text-sm">${encryptOn?'🔒 ':''}${content}</div>${avatar(currentUser,'sm')}</div>`;
+  let displayContent = content;
+  if (fileUrl) {
+    const isImg = fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+    displayContent = (isImg ? `<img src="${fileUrl}" class="max-w-48 rounded-lg mb-1">` : `<a href="${fileUrl}" target="_blank" class="text-blue-500 underline text-xs">📎 ${fileName}</a>`) + (content ? `<div class="mt-1">${content}</div>` : '');
+  }
+  container.innerHTML += `<div class="flex justify-end gap-2 items-start"><div class="msg-bubble ${encryptOn?'bg-blue-100':'bg-orange-100'} text-gray-800 rounded-2xl rounded-br-sm px-3 py-2 text-sm">${encryptOn?'🔒 ':''}${displayContent}</div>${avatar(currentUser,'sm')}</div>`;
   const room = chatRooms.find(r => r.id === currentRoomId);
   const hasAI = room?.include_ai !== 0;
-  if (hasAI && !encryptOn) {
+  if (hasAI && !encryptOn && !fileUrl) {
     container.innerHTML += `<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble bg-gray-100 text-gray-700 rounded-2xl rounded-bl-sm px-3 py-2 text-sm italic">思考中...</div></div>`;
   }
   container.scrollTop = container.scrollHeight;
 
   await fetch(`/api/rooms/${currentRoomId}/messages`, {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ sender: currentUser, content: sendContent, iv, is_encrypted, call_ai: !is_encrypted })
+    body: JSON.stringify({ sender: currentUser, content: sendContent, iv, is_encrypted, call_ai: !is_encrypted && !fileUrl })
   });
 
   loadRoomMessages(currentRoomId);

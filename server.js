@@ -6,7 +6,7 @@ const http = require('http');
 const fs = require('fs');
 
 const app = express();
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '1024mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'data', 'uploads')));
 
@@ -604,6 +604,43 @@ app.post('/api/upload-image', async (req, res) => {
   });
 
   res.json({ filename, url: `/uploads/${filename}`, study_content: aiText });
+});
+
+// Chat file upload (每人最多2GB)
+app.post('/api/upload-chat-file', (req, res) => {
+  const { data, name, mime, member } = req.body;
+  if (!data) return res.status(400).json({ error: '缺少文件数据' });
+
+  const matches = data.match(/^data:(.*?);base64,(.*)$/);
+  if (!matches) return res.status(400).json({ error: '无效文件格式' });
+
+  const base64Data = matches[2];
+  const fileSize = Buffer.byteLength(base64Data, 'base64');
+
+  // Check user storage quota (2GB per person)
+  if (member) {
+    const userDir = path.join(uploadsDir, member);
+    if (!fs.existsSync(userDir)) fs.mkdirSync(userDir, { recursive: true });
+    let totalSize = 0;
+    try {
+      const files = fs.readdirSync(userDir);
+      for (const f of files) {
+        totalSize += fs.statSync(path.join(userDir, f)).size;
+      }
+    } catch(e) {}
+    if (totalSize + fileSize > 2 * 1024 * 1024 * 1024) {
+      return res.status(413).json({ error: '存储空间已满（每人最多2GB）' });
+    }
+    const origExt = name ? name.split('.').pop() : 'bin';
+    const filename = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${origExt}`;
+    fs.writeFileSync(path.join(userDir, filename), Buffer.from(base64Data, 'base64'));
+    return res.json({ url: `/uploads/${member}/${filename}`, filename });
+  }
+
+  const origExt = name ? name.split('.').pop() : 'bin';
+  const filename = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${origExt}`;
+  fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(base64Data, 'base64'));
+  res.json({ url: `/uploads/${filename}`, filename });
 });
 
 // ============ START ============
