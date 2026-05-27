@@ -44,6 +44,15 @@ db.exec(`
     UNIQUE(activity_id, member)
   );
 
+  -- 活动匿名投票
+  CREATE TABLE IF NOT EXISTS activity_votes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    activity_id INTEGER NOT NULL,
+    member TEXT NOT NULL,
+    vote TEXT NOT NULL CHECK(vote IN ('support', 'decline')),
+    UNIQUE(activity_id, member)
+  );
+
   -- 打卡表
   CREATE TABLE IF NOT EXISTS checkins (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -294,7 +303,15 @@ app.get('/api/activities', (req, res) => {
   const joins = db.prepare('SELECT activity_id, member FROM activity_joins').all();
   const joinMap = {};
   for (const j of joins) { if (!joinMap[j.activity_id]) joinMap[j.activity_id] = []; joinMap[j.activity_id].push(j.member); }
-  res.json(activities.map(a => ({ ...a, participants: joinMap[a.id] || [] })));
+  const votes = db.prepare('SELECT activity_id, vote, COUNT(*) as count FROM activity_votes GROUP BY activity_id, vote').all();
+  const voteMap = {};
+  for (const v of votes) { if (!voteMap[v.activity_id]) voteMap[v.activity_id] = {support:0,decline:0}; voteMap[v.activity_id][v.vote] = v.count; }
+  // Also get current user's vote
+  const member = req.query.member || '';
+  const myVotes = member ? db.prepare('SELECT activity_id, vote FROM activity_votes WHERE member = ?').all(member) : [];
+  const myVoteMap = {};
+  for (const v of myVotes) myVoteMap[v.activity_id] = v.vote;
+  res.json(activities.map(a => ({ ...a, participants: joinMap[a.id] || [], votes: voteMap[a.id] || {support:0,decline:0}, myVote: myVoteMap[a.id] || null })));
 });
 
 app.post('/api/activities', (req, res) => {
@@ -320,6 +337,18 @@ app.post('/api/activities/:id/leave', (req, res) => {
 app.post('/api/activities/:id/status', (req, res) => {
   const { status } = req.body;
   db.prepare('UPDATE activities SET status = ? WHERE id = ?').run(status, req.params.id);
+  res.json({ ok: true });
+});
+
+// Anonymous vote on activity
+app.post('/api/activities/:id/vote', (req, res) => {
+  const { member, vote } = req.body;
+  if (!member || !vote) return res.status(400).json({ error: '缺少参数' });
+  if (!['support', 'decline'].includes(vote)) return res.status(400).json({ error: '无效投票' });
+  // Can't vote on own activity
+  const activity = db.prepare('SELECT creator FROM activities WHERE id = ?').get(req.params.id);
+  if (activity && activity.creator === member) return res.status(400).json({ error: '不能给自己的活动投票' });
+  db.prepare('INSERT OR REPLACE INTO activity_votes (activity_id, member, vote) VALUES (?, ?, ?)').run(req.params.id, member, vote);
   res.json({ ok: true });
 });
 

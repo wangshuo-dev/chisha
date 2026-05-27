@@ -57,14 +57,14 @@
     <div class="text-center"><span class="text-xs font-semibold text-purple-600" id="header-countdown"></span></div>
   </header>
   <div id="panel-home" class="p-4"></div>
-  <div id="panel-room" class="p-4 hidden"></div>
+  <div id="panel-review" class="p-4 hidden"></div>
   <div id="panel-focus" class="p-4 hidden"></div>
   <div id="panel-chat" class="p-4 hidden"></div>
   <div id="panel-stats" class="p-4 hidden"></div>
   <nav class="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur border-t z-30 max-w-lg mx-auto">
     <div class="flex h-14">
       <button onclick="switchTab('home')" id="tab-home" class="flex-1 flex flex-col items-center justify-center tab-active"><span class="text-lg">🏠</span><span class="text-xs">首页</span></button>
-      <button onclick="switchTab('room')" id="tab-room" class="flex-1 flex flex-col items-center justify-center tab-inactive"><span class="text-lg">🏫</span><span class="text-xs">自习室</span></button>
+      <button onclick="switchTab('review')" id="tab-review" class="flex-1 flex flex-col items-center justify-center tab-inactive"><span class="text-lg">📖</span><span class="text-xs">复习</span></button>
       <button onclick="switchTab('focus')" id="tab-focus" class="flex-1 flex flex-col items-center justify-center tab-inactive"><span class="text-lg">🍅</span><span class="text-xs">专注</span></button>
       <button onclick="switchTab('chat')" id="tab-chat" class="flex-1 flex flex-col items-center justify-center tab-inactive"><span class="text-lg">💬</span><span class="text-xs">聊天</span></button>
       <button onclick="switchTab('stats')" id="tab-stats" class="flex-1 flex flex-col items-center justify-center tab-inactive"><span class="text-lg">📊</span><span class="text-xs">统计</span></button>
@@ -142,13 +142,13 @@ function selectLoginUser(n){selectedLoginUser=n;document.querySelectorAll('[id^=
 async function doLogin(){const pwd=document.getElementById('login-pwd').value;if(!selectedLoginUser||!pwd)return;const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:selectedLoginUser,password:pwd})});if(r.ok){currentUser=selectedLoginUser;localStorage.setItem('chisha_user',currentUser);localStorage.setItem('chisha_pwd',pwd);showMain();}else{const d=await r.json();const el=document.getElementById('login-error');el.textContent=d.error||'登录失败';el.classList.remove('hidden');}}
 function logout(){localStorage.removeItem('chisha_user');currentUser=null;location.reload();}
 function showMain(){document.getElementById('login-page').classList.add('hidden');document.getElementById('main-app').classList.remove('hidden');document.getElementById('header-user').innerHTML=avatar(currentUser,'sm')+`<span class="text-sm font-medium">${currentUser}</span>`;loadHome();}
-function switchTab(tab){currentTab=tab;['home','room','focus','chat','stats'].forEach(t=>{document.getElementById('panel-'+t).classList.toggle('hidden',t!==tab);document.getElementById('tab-'+t).className=t===tab?'flex-1 flex flex-col items-center justify-center tab-active':'flex-1 flex flex-col items-center justify-center tab-inactive';});if(tab==='home')loadHome();else if(tab==='room')loadStudyRooms();else if(tab==='focus')loadFocus();else if(tab==='chat')loadChat();else if(tab==='stats')loadStats(7);}
+function switchTab(tab){currentTab=tab;['home','review','focus','chat','stats'].forEach(t=>{document.getElementById('panel-'+t).classList.toggle('hidden',t!==tab);document.getElementById('tab-'+t).className=t===tab?'flex-1 flex flex-col items-center justify-center tab-active':'flex-1 flex flex-col items-center justify-center tab-inactive';});if(tab==='home')loadHome();else if(tab==='review')loadReview();else if(tab==='focus')loadFocus();else if(tab==='chat')loadChat();else if(tab==='stats')loadStats(7);}
 function closeModal(){document.getElementById('modal').classList.add('hidden');}
 function showSettings(){document.getElementById('modal').classList.remove('hidden');document.getElementById('modal-content').innerHTML=`<div class="text-center mb-4">${avatar(currentUser,'lg')}<h3 class="font-bold mt-2">${currentUser}</h3><p class="text-sm text-gray-400">${MEMBERS[currentUser]?.goal}</p></div><button onclick="closeModal();switchTab('stats')" class="w-full bg-gray-50 rounded-xl py-3 text-sm mb-2">⚙️ 设置</button><button onclick="logout()" class="w-full bg-red-50 text-red-600 rounded-xl py-3 text-sm">退出登录</button><button onclick="closeModal()" class="w-full mt-2 text-gray-400 text-sm py-2">取消</button>`;}
 
 // === HOME TAB ===
 async function loadHome(){
-  const [statusRes,actRes]=await Promise.all([fetch('/api/status'),fetch('/api/activities')]);
+  const [statusRes,actRes]=await Promise.all([fetch('/api/status'),fetch(`/api/activities?member=${encodeURIComponent(currentUser)}`)]);
   const statuses=await statusRes.json(),activities=await actRes.json();
   const now=new Date().toISOString();
   const myStatus=statuses.find(s=>s.member===currentUser);
@@ -168,8 +168,9 @@ async function loadHome(){
     <div class="flex items-center justify-between mb-3"><h3 class="text-sm font-semibold text-gray-600">最近活动</h3><button onclick="showCreateActivity()" class="bg-orange-500 text-white text-xs px-3 py-1.5 rounded-full">+ 发起</button></div>
     <div id="activities-list">${activities.length===0?'<p class="text-center text-gray-400 text-sm py-4">暂无活动</p>':activities.slice(0,10).map(a=>activityCard(a)).join('')}</div>`;
 }
-function activityCard(a){const typeMap={eat:'🍜约饭',study:'📚学习',free:'🎮自由'};const colorMap={eat:'border-l-orange-400',study:'border-l-blue-400',free:'border-l-green-400'};const isJoined=a.participants.includes(currentUser);const isOpen=a.status==='open';const isCreator=a.creator===currentUser;return`<div class="card bg-white p-3 shadow-sm mb-2 border-l-4 ${colorMap[a.type]||'border-l-gray-300'}"><div class="flex justify-between items-center mb-1"><span class="text-xs font-medium">${typeMap[a.type]||a.type}</span><span class="text-xs text-gray-400">${timeAgo(a.created_at)}</span></div><p class="font-medium text-sm mb-1">${a.title}</p>${a.time_slot?`<p class="text-xs text-gray-500 mb-1">⏰ ${a.time_slot}</p>`:''}<div class="flex items-center gap-1 mb-2">${a.participants.map(p=>avatar(p,'sm')).join('')}<span class="text-xs text-gray-400 ml-1">${a.participants.length}人</span></div>${isOpen?`<div class="flex gap-2">${!isJoined?`<button onclick="joinAct(${a.id})" class="text-xs bg-orange-50 text-orange-600 border border-orange-200 rounded-lg px-3 py-1">我也去</button>`:`<button onclick="leaveAct(${a.id})" class="text-xs bg-gray-50 text-gray-500 border rounded-lg px-3 py-1">不去了</button>`}${isCreator?`<button onclick="closeAct(${a.id})" class="text-xs bg-gray-100 text-gray-500 rounded-lg px-3 py-1">结束</button>`:''}</div>`:'<span class="text-xs text-gray-400">已结束</span>'}</div>`;}
+function activityCard(a){const typeMap={eat:'🍜约饭',study:'📚学习',free:'🎮自由'};const colorMap={eat:'border-l-orange-400',study:'border-l-blue-400',free:'border-l-green-400'};const isJoined=a.participants.includes(currentUser);const isOpen=a.status==='open';const isCreator=a.creator===currentUser;const v=a.votes||{support:0,decline:0};const myVote=a.myVote;return`<div class="card bg-white p-3 shadow-sm mb-2 border-l-4 ${colorMap[a.type]||'border-l-gray-300'}"><div class="flex justify-between items-center mb-1"><span class="text-xs font-medium">${typeMap[a.type]||a.type}</span><span class="text-xs text-gray-400">${timeAgo(a.created_at)}</span></div><p class="font-medium text-sm mb-1">${a.title}</p>${a.time_slot?`<p class="text-xs text-gray-500 mb-1">⏰ ${a.time_slot}</p>`:''}<div class="flex items-center gap-1 mb-2">${a.participants.map(p=>avatar(p,'sm')).join('')}<span class="text-xs text-gray-400 ml-1">${a.participants.length}人参与</span></div>${isOpen?`<div class="flex items-center gap-2 flex-wrap">${!isCreator?`<button onclick="voteAct(${a.id},'support')" class="text-xs ${myVote==='support'?'bg-green-500 text-white':'bg-green-50 text-green-600 border border-green-200'} rounded-lg px-3 py-1">👍 支持${v.support?'('+v.support+')':''}</button><button onclick="voteAct(${a.id},'decline')" class="text-xs ${myVote==='decline'?'bg-red-400 text-white':'bg-red-50 text-red-500 border border-red-200'} rounded-lg px-3 py-1">🙏 婉拒${v.decline?'('+v.decline+')':''}</button>`:''}<span class="text-xs text-gray-400">${v.support+v.decline>0?'匿名投票 '+(v.support+v.decline)+'票':''}</span>${!isJoined&&!isCreator?`<button onclick="joinAct(${a.id})" class="text-xs bg-orange-50 text-orange-600 border border-orange-200 rounded-lg px-3 py-1">我也去</button>`:''}${isJoined&&!isCreator?`<button onclick="leaveAct(${a.id})" class="text-xs bg-gray-50 text-gray-500 border rounded-lg px-3 py-1">不去了</button>`:''}${isCreator?`<button onclick="closeAct(${a.id})" class="text-xs bg-gray-100 text-gray-500 rounded-lg px-3 py-1">结束</button>`:''}</div>`:'<span class="text-xs text-gray-400">已结束</span>'}</div>`;}
 async function setStatus(s){await fetch('/api/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser,status:s})});loadHome();}
+async function voteAct(id,vote){await fetch(`/api/activities/${id}/vote`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser,vote})});loadHome();}
 async function joinAct(id){await fetch(`/api/activities/${id}/join`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser})});loadHome();}
 async function leaveAct(id){await fetch(`/api/activities/${id}/leave`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser})});loadHome();}
 async function closeAct(id){await fetch(`/api/activities/${id}/status`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'done'})});loadHome();}
@@ -363,6 +364,19 @@ function renderImmChat(){
   }).join('');
   container.scrollTop=container.scrollHeight;
 }
+
+// === REVIEW TAB (艾宾浩斯复习) ===
+async function loadReview(){
+  const r=await fetch(`/api/review-items?member=${encodeURIComponent(currentUser)}`);
+  const data=await r.json();
+  document.getElementById('panel-review').innerHTML=`
+    <h3 class="font-semibold text-gray-700 mb-3">📖 今日待复习</h3>
+    ${data.due.length===0?'<div class="card bg-white p-6 shadow-sm text-center mb-4"><p class="text-gray-400">今天没有需要复习的内容 🎉</p></div>':
+      data.due.map(item=>`<div class="card bg-white p-4 shadow-sm mb-3"><div class="flex items-center justify-between mb-2"><span class="font-medium text-sm">${item.content}</span><span class="text-xs text-gray-400">第${item.review_count+1}次</span></div><div class="flex items-center gap-1 mb-2">${[0,1,2,3,4].map(i=>`<div class="w-3 h-3 rounded-full ${i<item.review_count?'bg-green-400':i===item.review_count?'bg-orange-400':'bg-gray-200'}"></div>`).join('')}<span class="text-xs text-gray-400 ml-2">${item.review_count}/5</span></div><button onclick="markReviewed(${item.id})" class="bg-green-500 text-white text-xs px-4 py-1.5 rounded-full">已复习 ✓</button></div>`).join('')}
+    <details class="mb-4"><summary class="text-sm font-semibold text-gray-600 cursor-pointer py-2">即将复习 (${data.upcoming.length})</summary>${data.upcoming.map(item=>`<div class="bg-gray-50 rounded-lg p-3 mb-2 flex items-center justify-between"><span class="text-sm">${item.content}</span><span class="text-xs text-gray-400">${item.next_review_date}</span></div>`).join('')||'<p class="text-xs text-gray-400 py-2">暂无</p>'}</details>
+    <details><summary class="text-sm font-semibold text-gray-600 cursor-pointer py-2">已掌握 ✅ (${data.mastered.length})</summary>${data.mastered.map(item=>`<div class="bg-green-50 rounded-lg p-3 mb-2 flex items-center gap-2"><span class="text-green-600">✅</span><span class="text-sm">${item.content}</span></div>`).join('')||'<p class="text-xs text-gray-400 py-2">暂无</p>'}</details>`;
+}
+async function markReviewed(id){await fetch(`/api/review-items/${id}/review`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});loadReview();}
 
 // === FOCUS TAB ===
 function loadFocus(){
