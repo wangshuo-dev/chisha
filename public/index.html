@@ -28,6 +28,8 @@
     .scene-ui{position:relative;z-index:2}
     .status-btn.active{background:#f97316;color:#fff;box-shadow:0 2px 8px rgba(249,115,22,.3)}
     .pulse{animation:pulse 2s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+    @keyframes drumBeat{0%,100%{transform:scale(1) rotate(0deg)}10%{transform:scale(1.2) rotate(-5deg)}20%{transform:scale(0.95) rotate(3deg)}30%{transform:scale(1.15) rotate(-3deg)}40%{transform:scale(1) rotate(0deg)}}
+    .drum-beating{animation:drumBeat 0.8s ease-in-out infinite}
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -392,6 +394,12 @@ function loadFocus(){
         <button onclick="resetPomodoro()" class="bg-gray-200 text-gray-600 px-4 py-2 rounded-full text-sm">重置</button>
       </div>
     </div>
+    <div class="card bg-gradient-to-r from-orange-50 to-yellow-50 p-4 shadow-sm mb-4 text-center">
+      <div id="drum-area" class="flex flex-col items-center justify-center py-2">
+        <div id="drum-icon" class="text-5xl transition-transform" style="animation:none">🥁</div>
+        <p id="drum-label" class="text-xs text-gray-400 mt-2">开始番茄钟，小鼓为你擂鼓</p>
+      </div>
+    </div>
     <div class="card bg-white p-4 shadow-sm mb-4">
       <div class="flex items-center justify-between mb-3"><h3 class="text-sm font-semibold text-gray-600">今日目标</h3><button onclick="showAddGoal()" class="text-xs text-orange-500">+ 添加</button></div>
       <div id="goals-list"></div>
@@ -422,11 +430,38 @@ function showAddGoal(){document.getElementById('modal').classList.remove('hidden
 async function addGoal(){const content=document.getElementById('goal-content').value.trim();if(!content)return;await fetch('/api/daily-goals',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser,content,target_min:parseInt(document.getElementById('goal-min').value)||60})});closeModal();loadGoals();}
 async function completeGoal(id){await fetch(`/api/daily-goals/${id}/complete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});loadGoals();}
 
-// Pomodoro
-function togglePomodoro(){if(pomodoroRunning){clearInterval(pomodoroInterval);pomodoroRunning=false;document.getElementById('pomo-btn').textContent='继续';}else{pomodoroRunning=true;document.getElementById('pomo-btn').textContent='暂停';pomodoroInterval=setInterval(tickPomodoro,1000);}}
-function resetPomodoro(){clearInterval(pomodoroInterval);pomodoroRunning=false;pomodoroSeconds=25*60;updateTimerDisplay();const btn=document.getElementById('pomo-btn');if(btn)btn.textContent='开始';}
-function tickPomodoro(){pomodoroSeconds--;if(pomodoroSeconds<=0){clearInterval(pomodoroInterval);pomodoroRunning=false;pomodoroSeconds=25*60;if(confirm('🍅 番茄完成！记录25分钟学习？')){fetch('/api/checkins',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser,type:'study',duration_min:25,note:'番茄钟',study_content:'',rating:0})});}updateTimerDisplay();return;}updateTimerDisplay();}
+// Pomodoro + 小鼓擂鼓
+function togglePomodoro(){if(pomodoroRunning){clearInterval(pomodoroInterval);pomodoroRunning=false;document.getElementById('pomo-btn').textContent='继续';stopDrum();}else{pomodoroRunning=true;document.getElementById('pomo-btn').textContent='暂停';pomodoroInterval=setInterval(tickPomodoro,1000);startDrum();}}
+function resetPomodoro(){clearInterval(pomodoroInterval);pomodoroRunning=false;pomodoroSeconds=25*60;updateTimerDisplay();const btn=document.getElementById('pomo-btn');if(btn)btn.textContent='开始';stopDrum();resetDrumUI();}
+function tickPomodoro(){pomodoroSeconds--;if(pomodoroSeconds<=0){clearInterval(pomodoroInterval);pomodoroRunning=false;pomodoroSeconds=25*60;stopDrum();drumFinish();if(confirm('🍅 番茄完成！记录25分钟学习？')){fetch('/api/checkins',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser,type:'study',duration_min:25,note:'番茄钟',study_content:'',rating:0})});}updateTimerDisplay();return;}updateTimerDisplay();}
 function updateTimerDisplay(){const el=document.getElementById('timer-display');const ring=document.getElementById('timer-ring');if(!el)return;const m=Math.floor(pomodoroSeconds/60),s=pomodoroSeconds%60;el.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;if(ring){const progress=1-pomodoroSeconds/(25*60);ring.setAttribute('stroke-dashoffset',(progress*439.82).toString());}}
+
+// 小鼓擂鼓助威（纯视觉动画）
+function startDrum(){
+  const icon=document.getElementById('drum-icon');
+  const label=document.getElementById('drum-label');
+  if(icon)icon.classList.add('drum-beating');
+  if(label)label.textContent='🔥 咚咚咚！专注中...';
+}
+function stopDrum(){
+  const icon=document.getElementById('drum-icon');
+  const label=document.getElementById('drum-label');
+  if(icon)icon.classList.remove('drum-beating');
+  if(label)label.textContent='⏸ 暂停中';
+}
+function resetDrumUI(){
+  const icon=document.getElementById('drum-icon');
+  const label=document.getElementById('drum-label');
+  if(icon)icon.classList.remove('drum-beating');
+  if(label)label.textContent='开始番茄钟，小鼓为你擂鼓';
+}
+function drumFinish(){
+  const icon=document.getElementById('drum-icon');
+  const label=document.getElementById('drum-label');
+  if(icon){icon.classList.remove('drum-beating');icon.textContent='🎉';}
+  if(label)label.textContent='太棒了！番茄完成！';
+  setTimeout(()=>{if(icon)icon.textContent='🥁';resetDrumUI();},3000);
+}
 
 // === CHAT TAB ===
 async function loadChat(){
@@ -511,7 +546,7 @@ async function sendRoomMsg(){
   if(chatFileData){const uploadRes=await fetch('/api/upload-chat-file',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:chatFileData.dataUrl,name:chatFileData.name,mime:chatFileData.mime,member:currentUser})});const uploadData=await uploadRes.json();if(uploadData.error){alert(uploadData.error);return;}fileUrl=uploadData.url;fileName=chatFileData.name;clearChatFile();}
   let sendContent=content;
   if(fileUrl){sendContent=JSON.stringify({text:content,file:fileUrl,fileName,isImage:fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)?true:false});}
-  await fetch(`/api/rooms/${currentRoomId}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:sendContent,iv:'',is_encrypted:false,call_ai:!fileUrl})});
+  await fetch(`/api/rooms/${currentRoomId}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:sendContent,iv:'',is_encrypted:false,call_ai:true})});
   loadRoomMessages(currentRoomId);
 }
 

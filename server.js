@@ -204,14 +204,52 @@ const AI_CONFIG = {
 - 偶尔用emoji但不要过多`
 };
 
-// Call kiro-rs Anthropic Messages API
+// Read image as base64 for vision (max 1MB file)
+function imageToBase64(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size > 5 * 1024 * 1024) return null; // skip files > 5MB
+    const buf = fs.readFileSync(filePath);
+    return buf.toString('base64');
+  } catch(e) {
+    console.error('Image read error:', e.message);
+    return null;
+  }
+}
+
+// Detect media type from extension
+function getMediaType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const map = {'.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.gif':'image/gif','.webp':'image/webp'};
+  return map[ext] || 'image/jpeg';
+}
+
+// Build vision content block from image URL
+function buildVisionContent(text, imageUrl) {
+  // imageUrl is like /uploads/member/filename.jpg
+  const filePath = path.join(__dirname, 'data', imageUrl);
+  if (!fs.existsSync(filePath)) return [{ type: 'text', text: text || '（用户发了一张图片但无法读取）' }];
+  
+  const b64 = imageToBase64(filePath);
+  if (!b64) return [{ type: 'text', text: text || '（用户发了一张图片，文件太大无法处理）' }];
+  
+  const content = [];
+  if (text) content.push({ type: 'text', text });
+  content.push({
+    type: 'image',
+    source: { type: 'base64', media_type: getMediaType(filePath), data: b64 }
+  });
+  return content;
+}
+
+// Call kiro-rs Anthropic Messages API (supports vision)
 async function callAI(messages, systemPrompt) {
   const sys = systemPrompt || AI_CONFIG.systemPrompt;
   const body = JSON.stringify({
     model: AI_CONFIG.model,
     system: sys,
     messages: messages,
-    max_tokens: 300
+    max_tokens: 600
   });
 
   return new Promise((resolve, reject) => {
@@ -581,10 +619,33 @@ app.post('/api/rooms/:id/messages', async (req, res) => {
     const room = db.prepare('SELECT * FROM chat_rooms WHERE id = ?').get(roomId);
     if (room && room.include_ai) {
       const recent = db.prepare("SELECT sender, content, is_ai FROM room_messages WHERE room_id = ? AND is_encrypted = 0 ORDER BY created_at DESC LIMIT 10").all(roomId).reverse();
-      const aiMessages = recent.map(m => ({
-        role: m.is_ai ? 'assistant' : 'user',
-        content: m.is_ai ? m.content : `${m.sender}说：${m.content}`
-      }));
+      
+      // Build messages with vision support
+      const aiMessages = [];
+      for (const m of recent) {
+        if (m.is_ai) {
+          aiMessages.push({ role: 'assistant', content: m.content });
+        } else {
+          // Try to parse file/image messages
+          let parsed = null;
+          try { parsed = JSON.parse(m.content); } catch(e) {}
+          
+          if (parsed && parsed.file && parsed.isImage) {
+            // Image message — build vision content
+            const visionContent = buildVisionContent(
+              parsed.text ? `${m.sender}说：${parsed.text}` : `${m.sender}发了一张图片，请描述和分析图片内容`,
+              parsed.file
+            );
+            aiMessages.push({ role: 'user', content: visionContent });
+          } else if (parsed && parsed.file && !parsed.isImage) {
+            // File message — just describe it
+            const desc = parsed.text ? `${m.sender}说：${parsed.text}（附件：${parsed.fileName || '文件'}）` : `${m.sender}发了一个文件：${parsed.fileName || '文件'}`;
+            aiMessages.push({ role: 'user', content: desc });
+          } else {
+            aiMessages.push({ role: 'user', content: `${m.sender}说：${m.content}` });
+          }
+        }
+      }
 
       let sys = AI_CONFIG.systemPrompt;
       if (room.type === 'private' || room.name?.startsWith('小鼓·')) {
@@ -592,6 +653,7 @@ app.post('/api/rooms/:id/messages', async (req, res) => {
         sys += `\n\n你现在在和${sender}一对一私聊。TA的目标是${user?.goal || '未知'}。
 在私聊模式下：
 - 你是TA的专属学习辅导员，可以详细解答学科问题
+- 如果TA发了图片（教材、笔记、题目等），仔细分析图片内容并给出解答
 - 如果TA问考试相关的知识点，给出清晰、有条理的解答
 - 如果TA只是闲聊，适当引导回学习，但不要太强硬
 - 可以主动问TA今天学了什么、有什么困难
