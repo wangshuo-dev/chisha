@@ -116,6 +116,40 @@ db.exec(`
     is_ai INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- 虚拟自习室
+  CREATE TABLE IF NOT EXISTS study_rooms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    floor INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    total_seats INTEGER DEFAULT 20,
+    description TEXT DEFAULT '',
+    owner TEXT DEFAULT ''
+  );
+
+  -- 座位
+  CREATE TABLE IF NOT EXISTS study_seats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id INTEGER NOT NULL,
+    seat_number INTEGER NOT NULL,
+    member TEXT DEFAULT '',
+    scene TEXT DEFAULT '',
+    seated_at DATETIME,
+    UNIQUE(room_id, seat_number)
+  );
+
+  -- 自习记录
+  CREATE TABLE IF NOT EXISTS study_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    member TEXT NOT NULL,
+    room_id INTEGER NOT NULL,
+    seat_number INTEGER NOT NULL,
+    scene TEXT DEFAULT '',
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ended_at DATETIME,
+    duration_min INTEGER DEFAULT 0
+  );
+
 `);
 
 // ============ SEED USERS ============
@@ -144,20 +178,21 @@ const AI_CONFIG = {
   baseUrl: 'http://127.0.0.1:8990',
   apiKey: 'sk-kiro-rs-nSg4Xz2c1G3xZ1Qa5y-gXbicW9RLMdlt',
   model: 'claude-sonnet-4-6',
-  systemPrompt: `你是"吃啥"小组的AI伙伴，名叫"小鼓"。你的职责是鼓励和陪伴6位朋友：
-- 马国恒（考研·通信学）
-- 姜荣耀（考研·哲学）
-- 王朔（考研·教育学）
-- 龙（考研·会计学）
-- 李雪婷（学校兼职）
-- 邱茜（考公）
+  systemPrompt: `你是"吃啥"小组的AI学习伙伴，名叫"小鼓"。你的职责是鼓励、陪伴和辅导6位朋友：
+- 马国恒（考研·通信工程）：可以帮他解答信号与系统、通信原理、数电模电等问题
+- 姜荣耀（考研·哲学）：可以帮他梳理马哲、中哲、西哲知识点
+- 王朔（考研·教育学/333教育综合）：可以帮他梳理教育学原理、教育心理学、中外教育史知识点
+- 龙（考研·会计学）：可以帮她解答会计学、财务管理、审计等问题
+- 李雪婷（学校兼职）：鼓励她平衡工作和生活
+- 邱茜（考公）：可以帮她梳理行测、申论知识点
 
-你的风格：温暖、幽默、简短有力。用1-3句话回复。
-- 鼓励学习时要具体，不要空洞
-- 约饭时可以活泼一点
-- 有人疲惫时给予理解和支持
-- 偶尔用emoji但不要过多
-- 记住每个人的目标，给出针对性建议`
+你的风格：温暖、专业、简洁。
+- 在群聊中用1-3句话回复，活泼鼓励
+- 在私聊中可以更详细地解答学科问题，像一个耐心的学长/学姐
+- 当用户问学科问题时，给出准确、有条理的解答
+- 当用户疲惫时给予理解和支持
+- 适当督促学习，但不要让人有压力
+- 偶尔用emoji但不要过多`
 };
 
 // Call kiro-rs Anthropic Messages API
@@ -523,9 +558,15 @@ app.post('/api/rooms/:id/messages', async (req, res) => {
       }));
 
       let sys = AI_CONFIG.systemPrompt;
-      if (room.type === 'private') {
+      if (room.type === 'private' || room.name?.startsWith('小鼓·')) {
         const user = db.prepare('SELECT goal FROM users WHERE name = ?').get(sender);
-        sys += `\n\n你现在在和${sender}私聊。TA的目标是${user?.goal || '未知'}。更加个性化地鼓励和帮助TA。`;
+        sys += `\n\n你现在在和${sender}一对一私聊。TA的目标是${user?.goal || '未知'}。
+在私聊模式下：
+- 你是TA的专属学习辅导员，可以详细解答学科问题
+- 如果TA问考试相关的知识点，给出清晰、有条理的解答
+- 如果TA只是闲聊，适当引导回学习，但不要太强硬
+- 可以主动问TA今天学了什么、有什么困难
+- 回复可以更长更详细（3-10句话）`;
       }
 
       const aiReply = await callAI(aiMessages, sys);
@@ -642,6 +683,132 @@ app.post('/api/upload-chat-file', (req, res) => {
   fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(base64Data, 'base64'));
   res.json({ url: `/uploads/${filename}`, filename });
 });
+
+
+// ============ STUDY ROOMS (虚拟自习室) ============
+// Seed rooms
+const existingRooms = db.prepare("SELECT COUNT(*) as c FROM study_rooms").get();
+if (existingRooms.c === 0) {
+  const rooms = [
+    { floor: 1, name: '一楼自习室', total_seats: 20, description: '安静舒适的学习空间', owner: '' },
+    { floor: 2, name: '二楼自习室', total_seats: 20, description: '明亮宽敞的学习区域', owner: '' },
+    { floor: 3, name: '三楼自习室', total_seats: 20, description: '高层视野开阔', owner: '' },
+    { floor: 4, name: '天台自习室', total_seats: 1, description: '王朔专属天台自习室', owner: '王朔' }
+  ];
+  const insertRoom = db.prepare('INSERT INTO study_rooms (floor, name, total_seats, description, owner) VALUES (?, ?, ?, ?, ?)');
+  for (const r of rooms) {
+    const res = insertRoom.run(r.floor, r.name, r.total_seats, r.description, r.owner);
+    // Create seats for each room
+    const insertSeat = db.prepare('INSERT OR IGNORE INTO study_seats (room_id, seat_number) VALUES (?, ?)');
+    for (let i = 1; i <= r.total_seats; i++) {
+      insertSeat.run(res.lastInsertRowid, i);
+    }
+  }
+}
+
+// Get all rooms with occupancy
+app.get('/api/study-rooms', (req, res) => {
+  const rooms = db.prepare('SELECT * FROM study_rooms ORDER BY floor').all();
+  const seats = db.prepare("SELECT room_id, COUNT(*) as occupied FROM study_seats WHERE member != '' AND member IS NOT NULL AND member != '' GROUP BY room_id").all();
+  const seatMap = {};
+  for (const s of seats) seatMap[s.room_id] = s.occupied;
+  res.json(rooms.map(r => ({ ...r, occupied: seatMap[r.id] || 0 })));
+});
+
+// Get seats for a room
+app.get('/api/study-rooms/:id/seats', (req, res) => {
+  const seats = db.prepare('SELECT * FROM study_seats WHERE room_id = ? ORDER BY seat_number').all(req.params.id);
+  res.json(seats);
+});
+
+// Sit down (take a seat)
+app.post('/api/study-rooms/:id/sit', (req, res) => {
+  const { member, seat_number, scene } = req.body;
+  const roomId = req.params.id;
+  if (!member || !seat_number) return res.status(400).json({ error: '缺少参数' });
+
+  // Check room ownership (4F is 王朔 exclusive)
+  const room = db.prepare('SELECT * FROM study_rooms WHERE id = ?').get(roomId);
+  if (room && room.owner && room.owner !== member) {
+    return res.status(403).json({ error: `这是${room.owner}的专属自习室` });
+  }
+
+  // Check if already seated somewhere
+  const existing = db.prepare("SELECT * FROM study_seats WHERE member = ?").get(member);
+  if (existing) {
+    // Leave current seat first
+    db.prepare("UPDATE study_seats SET member = '', scene = '', seated_at = NULL WHERE member = ?").run(member);
+    // End current session
+    const session = db.prepare("SELECT * FROM study_sessions WHERE member = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1").get(member);
+    if (session) {
+      const duration = Math.round((Date.now() - new Date(session.started_at).getTime()) / 60000);
+      db.prepare("UPDATE study_sessions SET ended_at = datetime('now'), duration_min = ? WHERE id = ?").run(duration, session.id);
+    }
+  }
+
+  // Check seat availability
+  const seat = db.prepare('SELECT * FROM study_seats WHERE room_id = ? AND seat_number = ?').get(roomId, seat_number);
+  if (!seat) return res.status(404).json({ error: '座位不存在' });
+  if (seat.member && seat.member !== member) return res.status(409).json({ error: '座位已被占用' });
+
+  // Sit down
+  db.prepare("UPDATE study_seats SET member = ?, scene = ?, seated_at = datetime('now') WHERE room_id = ? AND seat_number = ?")
+    .run(member, scene || '大海', roomId, seat_number);
+
+  // Start session
+  db.prepare("INSERT INTO study_sessions (member, room_id, seat_number, scene) VALUES (?, ?, ?, ?)")
+    .run(member, roomId, seat_number, scene || '大海');
+
+  // Auto set status to 学习中
+  db.prepare("UPDATE member_status SET status = '学习中', started_at = datetime('now'), expires_at = datetime('now', '+8 hours') WHERE member = ?").run(member);
+
+  res.json({ ok: true });
+});
+
+// Leave seat
+app.post('/api/study-rooms/leave', (req, res) => {
+  const { member } = req.body;
+  if (!member) return res.status(400).json({ error: '缺少参数' });
+
+  db.prepare("UPDATE study_seats SET member = '', scene = '', seated_at = NULL WHERE member = ?").run(member);
+
+  // End session
+  const session = db.prepare("SELECT * FROM study_sessions WHERE member = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1").get(member);
+  if (session) {
+    const duration = Math.round((Date.now() - new Date(session.started_at).getTime()) / 60000);
+    db.prepare("UPDATE study_sessions SET ended_at = datetime('now'), duration_min = ? WHERE id = ?").run(duration, session.id);
+  }
+
+  // Set status to 离开
+  db.prepare("UPDATE member_status SET status = '离开' WHERE member = ?").run(member);
+
+  res.json({ ok: true, duration: session ? Math.round((Date.now() - new Date(session.started_at).getTime()) / 60000) : 0 });
+});
+
+// Change scene while seated
+app.post('/api/study-rooms/change-scene', (req, res) => {
+  const { member, scene } = req.body;
+  if (!member || !scene) return res.status(400).json({ error: '缺少参数' });
+  db.prepare("UPDATE study_seats SET scene = ? WHERE member = ?").run(scene, member);
+  db.prepare("UPDATE study_sessions SET scene = ? WHERE member = ? AND ended_at IS NULL").run(scene, member);
+  res.json({ ok: true });
+});
+
+// Get current seat info for a member
+app.get('/api/study-rooms/my-seat', (req, res) => {
+  const { member } = req.query;
+  if (!member) return res.status(400).json({ error: '缺少member' });
+  const seat = db.prepare(`
+    SELECT s.*, r.name as room_name, r.floor, r.description as room_desc
+    FROM study_seats s
+    JOIN study_rooms r ON s.room_id = r.id
+    WHERE s.member = ?
+  `).get(member);
+  if (!seat || !seat.member) return res.json({ seated: false });
+  const session = db.prepare("SELECT * FROM study_sessions WHERE member = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1").get(member);
+  res.json({ seated: true, ...seat, session });
+});
+
 
 // ============ START ============
 const PORT = process.env.PORT || 3099;
