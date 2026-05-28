@@ -184,7 +184,7 @@ for (const m of MEMBERS) {
 
 // ============ KIRO-RS AI CONFIG ============
 const AI_CONFIG = {
-  baseUrl: 'http://127.0.0.1:8990',
+  baseUrl: 'http://192.3.187.8:8990',
   apiKey: 'sk-kiro-rs-nSg4Xz2c1G3xZ1Qa5y-gXbicW9RLMdlt',
   model: 'claude-sonnet-4-6',
   systemPrompt: `你是"吃啥"小组的AI学习伙伴，名叫"小鼓"。你的职责是鼓励、陪伴和辅导6位朋友：
