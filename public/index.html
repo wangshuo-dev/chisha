@@ -516,24 +516,47 @@ async function showRoom(roomId){
 }
 function backToRoomList(){currentRoomId=null;loadChat();}
 
+// 微信风格时间分隔：间隔>5分钟显示时间条
+function formatMsgTime(dateStr){
+  const d=new Date(dateStr+'Z');// DB存的是UTC
+  const now=new Date();
+  const bjNow=new Date(now.toLocaleString('en-US',{timeZone:'Asia/Shanghai'}));
+  const bjD=new Date(d.toLocaleString('en-US',{timeZone:'Asia/Shanghai'}));
+  const hm=bjD.getHours().toString().padStart(2,'0')+':'+bjD.getMinutes().toString().padStart(2,'0');
+  const todayStart=new Date(bjNow);todayStart.setHours(0,0,0,0);
+  const msgDay=new Date(bjD);msgDay.setHours(0,0,0,0);
+  const diffDays=Math.round((todayStart-msgDay)/(86400000));
+  if(diffDays===0)return hm;
+  if(diffDays===1)return`昨天 ${hm}`;
+  if(diffDays<7){const weekdays=['周日','周一','周二','周三','周四','周五','周六'];return`${weekdays[bjD.getDay()]} ${hm}`;}
+  return`${bjD.getFullYear()}/${(bjD.getMonth()+1).toString().padStart(2,'0')}/${bjD.getDate().toString().padStart(2,'0')} ${hm}`;
+}
+function shouldShowTime(prev,curr){
+  if(!prev)return true;
+  const t1=new Date(prev+'Z').getTime();const t2=new Date(curr+'Z').getTime();
+  return(t2-t1)>5*60*1000;
+}
+
 async function loadRoomMessages(roomId){
   const r=await fetch(`/api/rooms/${roomId}/messages?member=${encodeURIComponent(currentUser)}`);
   const msgs=await r.json();
   const container=document.getElementById('chat-messages');
   if(!container)return;
-  // 第一条展示北京时间
-  const now=new Date();const bjTime=now.toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',weekday:'short'});
-  const timeHeader=`<div class="text-center text-xs text-gray-400 py-2">🕐 北京时间 ${bjTime}</div>`;
-  container.innerHTML=timeHeader+msgs.map(m=>{
+  let html='';
+  msgs.forEach((m,i)=>{
+    if(shouldShowTime(i>0?msgs[i-1].created_at:null,m.created_at)){
+      html+=`<div class="text-center text-xs text-gray-400 py-2">${formatMsgTime(m.created_at)}</div>`;
+    }
     const isMe=m.sender===currentUser;
     const isAI=m.is_ai||m.sender==='小鼓';
     let text=m.content;
     if(m.is_encrypted&&m.iv){try{text=decryptMsg(m.content,m.iv,currentRoomId);}catch(e){text='🔒 加密消息';}}
     try{const p=JSON.parse(text);if(p&&p.file){const isImg=p.isImage||p.file.match(/\.(jpg|jpeg|png|gif|webp)$/i);text=(isImg?`<img src="${p.file}" class="max-w-48 rounded-lg mb-1 cursor-pointer" onclick="window.open('${p.file}')">`:`<a href="${p.file}" target="_blank" class="text-blue-500 underline text-xs">📎 ${p.fileName||'文件'}</a>`)+(p.text?`<div class="mt-1">${p.text}</div>`:'');}}catch(e){}
-    if(isMe){return`<div class="flex justify-end gap-2 items-start"><div class="msg-bubble msg-mine ${m.is_encrypted?'bg-blue-100':'bg-orange-100'} text-gray-800 rounded-2xl rounded-br-sm px-3 py-2 text-sm"><span onclick="deleteMsg(${roomId},${m.id})" class="msg-del">×</span>${m.is_encrypted?'🔒 ':''}${text}</div>${avatar(currentUser,'sm')}</div>`;}
-    else if(isAI){return`<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm">${text}</div></div>`;}
-    else{return`<div class="flex gap-2 items-start">${avatar(m.sender,'sm')}<div><div class="text-xs text-gray-400 mb-0.5">${m.sender}</div><div class="msg-bubble ${m.is_encrypted?'bg-blue-50':'bg-white border'} text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm">${m.is_encrypted?'🔒 ':''}${text}</div></div></div>`;}
-  }).join('');
+    if(isMe){html+=`<div class="flex justify-end gap-2 items-start"><div class="msg-bubble msg-mine ${m.is_encrypted?'bg-blue-100':'bg-orange-100'} text-gray-800 rounded-2xl rounded-br-sm px-3 py-2 text-sm"><span onclick="deleteMsg(${roomId},${m.id})" class="msg-del">×</span>${m.is_encrypted?'🔒 ':''}${text}</div>${avatar(currentUser,'sm')}</div>`;}
+    else if(isAI){html+=`<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm">${text}</div></div>`;}
+    else{html+=`<div class="flex gap-2 items-start">${avatar(m.sender,'sm')}<div><div class="text-xs text-gray-400 mb-0.5">${m.sender}</div><div class="msg-bubble ${m.is_encrypted?'bg-blue-50':'bg-white border'} text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm">${m.is_encrypted?'🔒 ':''}${text}</div></div></div>`;}
+  });
+  container.innerHTML=html;
   container.scrollTop=container.scrollHeight;
 }
 
