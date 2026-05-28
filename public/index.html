@@ -12,7 +12,13 @@
     .card{border-radius:16px;transition:transform .1s}.card:active{transform:scale(.98)}
     .avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#fff;flex-shrink:0}
     .avatar-sm{width:28px;height:28px;font-size:11px}.avatar-lg{width:48px;height:48px;font-size:18px}.avatar-xs{width:22px;height:22px;font-size:9px}
-    .msg-bubble{max-width:75%;word-break:break-word;position:relative}
+    .msg-bubble{max-width:70%;word-break:break-word;position:relative;line-height:1.5}
+    .msg-bubble-me{background:#95ec69;color:#000;border-radius:4px;position:relative}
+    .msg-bubble-me::after{content:'';position:absolute;top:10px;right:-6px;border:6px solid transparent;border-left-color:#95ec69}
+    .msg-bubble-other{background:#fff;color:#000;border-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.06);position:relative}
+    .msg-bubble-other::after{content:'';position:absolute;top:10px;left:-6px;border:6px solid transparent;border-right-color:#fff}
+    .msg-bubble-ai{background:#f4f4f4;color:#000;border-radius:4px;position:relative}
+    .msg-bubble-ai::after{content:'';position:absolute;top:10px;left:-6px;border:6px solid transparent;border-right-color:#f4f4f4}
     .msg-del{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.2)}
     .msg-mine .msg-del{display:flex}
     .star{cursor:pointer;font-size:22px}
@@ -505,7 +511,7 @@ async function showRoom(roomId){
   const roomName=isXiaogu?'🤖 小鼓 (AI辅导)':room?.type==='private'?room.members.find(m=>m!==currentUser):(room?.name||'聊天');
   panel.innerHTML=`
     <div class="flex items-center gap-2 mb-3"><button onclick="backToRoomList()" class="text-gray-500 text-lg">‹</button><span class="font-semibold text-sm flex-1">${roomName}</span><span class="text-xs text-gray-400">${room?.members?.length||0}人</span></div>
-    <div id="chat-messages" class="space-y-3 overflow-y-auto" style="height:calc(100vh - 240px)"></div>
+    <div id="chat-messages" class="space-y-3 overflow-y-auto bg-[#ebebeb] -mx-4 px-4 py-3" style="height:calc(100vh - 240px)"></div>
     <div id="chat-preview" class="hidden mb-2 p-2 bg-gray-50 rounded-lg relative"><button onclick="clearChatFile()" class="absolute top-1 right-1 text-gray-400 text-sm">✕</button><img id="chat-preview-img" class="hidden max-h-24 rounded"><div id="chat-preview-file" class="hidden text-xs text-gray-600">📎 <span id="chat-preview-filename"></span></div></div>
     <div class="flex gap-2 mt-2 items-center">
       <label class="cursor-pointer text-gray-400 text-lg"><input type="file" id="chat-file-input" class="hidden" accept="image/*,.pdf,.doc,.docx,.txt" onchange="handleChatFile(this)">📎</label>
@@ -552,9 +558,9 @@ async function loadRoomMessages(roomId){
     let text=m.content;
     if(m.is_encrypted&&m.iv){try{text=decryptMsg(m.content,m.iv,currentRoomId);}catch(e){text='🔒 加密消息';}}
     try{const p=JSON.parse(text);if(p&&p.file){const isImg=p.isImage||p.file.match(/\.(jpg|jpeg|png|gif|webp)$/i);text=(isImg?`<img src="${p.file}" class="max-w-48 rounded-lg mb-1 cursor-pointer" onclick="window.open('${p.file}')">`:`<a href="${p.file}" target="_blank" class="text-blue-500 underline text-xs">📎 ${p.fileName||'文件'}</a>`)+(p.text?`<div class="mt-1">${p.text}</div>`:'');}}catch(e){}
-    if(isMe){html+=`<div class="flex justify-end gap-2 items-start"><div class="msg-bubble msg-mine ${m.is_encrypted?'bg-blue-100':'bg-orange-100'} text-gray-800 rounded-2xl rounded-br-sm px-3 py-2 text-sm"><span onclick="deleteMsg(${roomId},${m.id})" class="msg-del">×</span>${m.is_encrypted?'🔒 ':''}${text}</div>${avatar(currentUser,'sm')}</div>`;}
-    else if(isAI){html+=`<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm">${text}</div></div>`;}
-    else{html+=`<div class="flex gap-2 items-start">${avatar(m.sender,'sm')}<div><div class="text-xs text-gray-400 mb-0.5">${m.sender}</div><div class="msg-bubble ${m.is_encrypted?'bg-blue-50':'bg-white border'} text-gray-800 rounded-2xl rounded-bl-sm px-3 py-2 text-sm">${m.is_encrypted?'🔒 ':''}${text}</div></div></div>`;}
+    if(isMe){html+=`<div class="flex justify-end gap-2 items-start"><div class="msg-bubble msg-bubble-me msg-mine px-3 py-2 text-sm"><span onclick="deleteMsg(${roomId},${m.id})" class="msg-del">×</span>${text}</div>${avatar(currentUser,'sm')}</div>`;}
+    else if(isAI){html+=`<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble msg-bubble-ai px-3 py-2 text-sm">${text}</div></div>`;}
+    else{html+=`<div class="flex gap-2 items-start">${avatar(m.sender,'sm')}<div><div class="text-xs text-gray-500 mb-0.5">${m.sender}</div><div class="msg-bubble msg-bubble-other px-3 py-2 text-sm">${text}</div></div></div>`;}
   });
   container.innerHTML=html;
   container.scrollTop=container.scrollHeight;
