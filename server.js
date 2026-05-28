@@ -329,9 +329,8 @@ app.post('/api/status', (req, res) => {
   const { member, status } = req.body;
   if (!member || !status) return res.status(400).json({ error: '缺少参数' });
   const now = new Date();
-  const expires = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
-  db.prepare('UPDATE member_status SET status = ?, started_at = ?, expires_at = ? WHERE member = ?')
-    .run(status, now.toISOString(), expires, member);
+  db.prepare('UPDATE member_status SET status = ?, started_at = ?, expires_at = NULL WHERE member = ?')
+    .run(status, now.toISOString(), member);
   res.json({ ok: true });
 });
 
