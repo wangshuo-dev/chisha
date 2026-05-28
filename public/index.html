@@ -29,6 +29,9 @@
     .msg-bubble-ai pre{background:#2d2d2d;color:#f8f8f2;padding:8px;border-radius:4px;overflow-x:auto;font-size:12px;margin:4px 0}
     .msg-bubble-ai pre code{background:none;color:inherit;padding:0}
     .typing-dots::after{content:'...';animation:dots 1.5s infinite}@keyframes dots{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
+    .msg-sending{width:16px;height:16px;border:2px solid #ccc;border-top-color:#999;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0;margin-top:6px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .msg-fail{width:18px;height:18px;border-radius:50%;background:#e74c3c;color:#fff;font-size:12px;font-weight:bold;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;margin-top:4px}
     .msg-del{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.2)}
     .msg-mine .msg-del{display:flex}
     .star{cursor:pointer;font-size:22px}
@@ -596,25 +599,52 @@ async function sendRoomMsg(){
   let sendContent=content;
   if(fileUrl){sendContent=JSON.stringify({text:content,file:fileUrl,fileName,isImage:fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)?true:false});displayContent=fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)?`<img src="${fileUrl}" class="max-w-48 rounded-lg">`+(content?`<div class="mt-1">${content}</div>`:''):`📎 ${fileName}`+(content?` ${content}`:'');}
 
-  // 立即显示自己的消息
-  container.innerHTML+=`<div class="flex justify-end gap-2 items-start"><div class="msg-bubble msg-bubble-me msg-mine px-3 py-2 text-sm">${displayContent}</div>${avatar(currentUser,'sm')}</div>`;
+  // 立即显示自己的消息 + 发送中旋转圈
+  const msgId='msg_'+Date.now();
+  container.innerHTML+=`<div id="${msgId}" class="flex justify-end gap-1.5 items-start"><div id="${msgId}_status" class="msg-sending"></div><div class="msg-bubble msg-bubble-me msg-mine px-3 py-2 text-sm">${displayContent}</div>${avatar(currentUser,'sm')}</div>`;
   container.scrollTop=container.scrollHeight;
 
-  // 显示"正在输入"
-  container.innerHTML+=`<div id="typing-indicator" class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble msg-bubble-ai px-3 py-2 text-sm text-gray-500"><span class="typing-dots">小鼓正在输入</span></div></div>`;
+  try{
+    // 发送请求
+    const res=await fetch(`/api/rooms/${currentRoomId}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:sendContent,iv:'',is_encrypted:false,call_ai:true})});
+    if(!res.ok)throw new Error('发送失败');
+    const data=await res.json();
+
+    // 发送成功：移除旋转圈
+    const statusEl=document.getElementById(msgId+'_status');
+    if(statusEl)statusEl.remove();
+
+    // 如果有AI回复，显示"正在输入"已经不需要了，直接显示
+    if(data.aiMsg){
+      const rendered=typeof marked!=='undefined'?marked.parse(data.aiMsg.content):data.aiMsg.content;
+      container.innerHTML+=`<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble msg-bubble-ai px-3 py-2 text-sm">${rendered}</div></div>`;
+      container.scrollTop=container.scrollHeight;
+    }
+  }catch(e){
+    // 发送失败：旋转圈变红色感叹号
+    const statusEl=document.getElementById(msgId+'_status');
+    if(statusEl){
+      statusEl.className='msg-fail';
+      statusEl.innerHTML='!';
+      statusEl.title='发送失败，点击重发';
+      statusEl.onclick=()=>{statusEl.closest('[id^=msg_]').remove();sendContent_retry=sendContent;retryRoomMsg(sendContent);};
+    }
+  }
+}
+// 重发消息
+async function retryRoomMsg(sendContent){
+  const container=document.getElementById('chat-messages');
+  const msgId='msg_'+Date.now();
+  container.innerHTML+=`<div id="${msgId}" class="flex justify-end gap-1.5 items-start"><div id="${msgId}_status" class="msg-sending"></div><div class="msg-bubble msg-bubble-me msg-mine px-3 py-2 text-sm">重发中...</div>${avatar(currentUser,'sm')}</div>`;
   container.scrollTop=container.scrollHeight;
-
-  // 发送请求
-  const res=await fetch(`/api/rooms/${currentRoomId}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:sendContent,iv:'',is_encrypted:false,call_ai:true})});
-  const data=await res.json();
-
-  // 移除"正在输入"，显示AI回复
-  const typing=document.getElementById('typing-indicator');
-  if(typing)typing.remove();
-  if(data.aiMsg){
-    const rendered=typeof marked!=='undefined'?marked.parse(data.aiMsg.content):data.aiMsg.content;
-    container.innerHTML+=`<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble msg-bubble-ai px-3 py-2 text-sm">${rendered}</div></div>`;
-    container.scrollTop=container.scrollHeight;
+  try{
+    const res=await fetch(`/api/rooms/${currentRoomId}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:sendContent,iv:'',is_encrypted:false,call_ai:true})});
+    if(!res.ok)throw new Error('fail');
+    document.getElementById(msgId)?.remove();
+    loadRoomMessages(currentRoomId);
+  }catch(e){
+    const statusEl=document.getElementById(msgId+'_status');
+    if(statusEl){statusEl.className='msg-fail';statusEl.innerHTML='!';statusEl.title='发送失败';}
   }
 }
 
