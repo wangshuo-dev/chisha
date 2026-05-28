@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>吃啥·学习系统</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
     input,textarea,select{font-size:16px!important}
@@ -19,6 +20,15 @@
     .msg-bubble-other::after{content:'';position:absolute;top:10px;left:-6px;border:6px solid transparent;border-right-color:#fff}
     .msg-bubble-ai{background:#f4f4f4;color:#000;border-radius:4px;position:relative}
     .msg-bubble-ai::after{content:'';position:absolute;top:10px;left:-6px;border:6px solid transparent;border-right-color:#f4f4f4}
+    .msg-bubble-ai table{width:100%;border-collapse:collapse;margin:4px 0;font-size:12px}
+    .msg-bubble-ai th,.msg-bubble-ai td{border:1px solid #ddd;padding:4px 6px;text-align:left}
+    .msg-bubble-ai th{background:#e8e8e8;font-weight:600}
+    .msg-bubble-ai ul,.msg-bubble-ai ol{padding-left:1.2em;margin:4px 0}
+    .msg-bubble-ai p{margin:2px 0}
+    .msg-bubble-ai code{background:#e0e0e0;padding:1px 4px;border-radius:3px;font-size:12px}
+    .msg-bubble-ai pre{background:#2d2d2d;color:#f8f8f2;padding:8px;border-radius:4px;overflow-x:auto;font-size:12px;margin:4px 0}
+    .msg-bubble-ai pre code{background:none;color:inherit;padding:0}
+    .typing-dots::after{content:'...';animation:dots 1.5s infinite}@keyframes dots{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
     .msg-del{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.2)}
     .msg-mine .msg-del{display:flex}
     .star{cursor:pointer;font-size:22px}
@@ -559,7 +569,7 @@ async function loadRoomMessages(roomId){
     if(m.is_encrypted&&m.iv){try{text=decryptMsg(m.content,m.iv,currentRoomId);}catch(e){text='🔒 加密消息';}}
     try{const p=JSON.parse(text);if(p&&p.file){const isImg=p.isImage||p.file.match(/\.(jpg|jpeg|png|gif|webp)$/i);text=(isImg?`<img src="${p.file}" class="max-w-48 rounded-lg mb-1 cursor-pointer" onclick="window.open('${p.file}')">`:`<a href="${p.file}" target="_blank" class="text-blue-500 underline text-xs">📎 ${p.fileName||'文件'}</a>`)+(p.text?`<div class="mt-1">${p.text}</div>`:'');}}catch(e){}
     if(isMe){html+=`<div class="flex justify-end gap-2 items-start"><div class="msg-bubble msg-bubble-me msg-mine px-3 py-2 text-sm"><span onclick="deleteMsg(${roomId},${m.id})" class="msg-del">×</span>${text}</div>${avatar(currentUser,'sm')}</div>`;}
-    else if(isAI){html+=`<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble msg-bubble-ai px-3 py-2 text-sm">${text}</div></div>`;}
+    else if(isAI){const rendered=typeof marked!=='undefined'?marked.parse(text):text;html+=`<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble msg-bubble-ai px-3 py-2 text-sm">${rendered}</div></div>`;}
     else{html+=`<div class="flex gap-2 items-start">${avatar(m.sender,'sm')}<div><div class="text-xs text-gray-500 mb-0.5">${m.sender}</div><div class="msg-bubble msg-bubble-other px-3 py-2 text-sm">${text}</div></div></div>`;}
   });
   container.innerHTML=html;
@@ -577,12 +587,35 @@ async function sendRoomMsg(){
   if(!content&&!chatFileData)return;
   if(!currentRoomId)return;
   input.value='';
+  const container=document.getElementById('chat-messages');
+
+  // 乐观更新：立即显示自己的消息
+  let displayContent=content;
   let fileUrl=null,fileName=null;
   if(chatFileData){const uploadRes=await fetch('/api/upload-chat-file',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:chatFileData.dataUrl,name:chatFileData.name,mime:chatFileData.mime,member:currentUser})});const uploadData=await uploadRes.json();if(uploadData.error){alert(uploadData.error);return;}fileUrl=uploadData.url;fileName=chatFileData.name;clearChatFile();}
   let sendContent=content;
-  if(fileUrl){sendContent=JSON.stringify({text:content,file:fileUrl,fileName,isImage:fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)?true:false});}
-  await fetch(`/api/rooms/${currentRoomId}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:sendContent,iv:'',is_encrypted:false,call_ai:true})});
-  loadRoomMessages(currentRoomId);
+  if(fileUrl){sendContent=JSON.stringify({text:content,file:fileUrl,fileName,isImage:fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)?true:false});displayContent=fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)?`<img src="${fileUrl}" class="max-w-48 rounded-lg">`+(content?`<div class="mt-1">${content}</div>`:''):`📎 ${fileName}`+(content?` ${content}`:'');}
+
+  // 立即显示自己的消息
+  container.innerHTML+=`<div class="flex justify-end gap-2 items-start"><div class="msg-bubble msg-bubble-me msg-mine px-3 py-2 text-sm">${displayContent}</div>${avatar(currentUser,'sm')}</div>`;
+  container.scrollTop=container.scrollHeight;
+
+  // 显示"正在输入"
+  container.innerHTML+=`<div id="typing-indicator" class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble msg-bubble-ai px-3 py-2 text-sm text-gray-500"><span class="typing-dots">小鼓正在输入</span></div></div>`;
+  container.scrollTop=container.scrollHeight;
+
+  // 发送请求
+  const res=await fetch(`/api/rooms/${currentRoomId}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:sendContent,iv:'',is_encrypted:false,call_ai:true})});
+  const data=await res.json();
+
+  // 移除"正在输入"，显示AI回复
+  const typing=document.getElementById('typing-indicator');
+  if(typing)typing.remove();
+  if(data.aiMsg){
+    const rendered=typeof marked!=='undefined'?marked.parse(data.aiMsg.content):data.aiMsg.content;
+    container.innerHTML+=`<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble msg-bubble-ai px-3 py-2 text-sm">${rendered}</div></div>`;
+    container.scrollTop=container.scrollHeight;
+  }
 }
 
 async function deleteMsg(roomId,msgId){if(!confirm('删除？'))return;await fetch(`/api/rooms/${roomId}/messages/${msgId}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({member:currentUser})});loadRoomMessages(roomId);}
