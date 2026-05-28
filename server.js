@@ -3,6 +3,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const crypto = require('crypto');
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 
 const app = express();
@@ -184,7 +185,7 @@ for (const m of MEMBERS) {
 
 // ============ KIRO-RS AI CONFIG ============
 const AI_CONFIG = {
-  baseUrl: 'http://192.3.187.8:8990',
+  baseUrl: 'https://kiro.openclawdeal.cn',
   apiKey: 'sk-kiro-rs-nSg4Xz2c1G3xZ1Qa5y-gXbicW9RLMdlt',
   model: 'claude-sonnet-4-6',
   systemPrompt: `你是"吃啥"小组的AI学习伙伴，名叫"小鼓"。你的职责是鼓励、陪伴和辅导6位朋友：
@@ -267,7 +268,8 @@ async function callAI(messages, systemPrompt) {
       }
     };
 
-    const req = http.request(options, (res) => {
+    const httpModule = url.protocol === 'https:' ? https : http;
+    const req = httpModule.request(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
@@ -744,7 +746,8 @@ app.post('/api/upload-image', async (req, res) => {
       hostname: url.hostname, port: url.port, path: url.pathname, method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': AI_CONFIG.apiKey, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) }
     };
-    const req2 = http.request(options, (r) => {
+    const httpMod = url.protocol === 'https:' ? https : http;
+    const req2 = httpMod.request(options, (r) => {
       let d = ''; r.on('data', c => d += c);
       r.on('end', () => { try { resolve(JSON.parse(d).content?.[0]?.text || '学习内容'); } catch(e) { resolve('学习内容'); } });
     });
