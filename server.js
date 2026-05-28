@@ -599,6 +599,13 @@ app.post('/api/rooms/:id/add-member', (req, res) => {
   res.json({ ok: true });
 });
 
+// Toggle AI in room
+app.post('/api/rooms/:id/toggle-ai', (req, res) => {
+  const { include_ai } = req.body;
+  db.prepare('UPDATE chat_rooms SET include_ai = ? WHERE id = ?').run(include_ai ? 1 : 0, req.params.id);
+  res.json({ ok: true });
+});
+
 // Get messages in a room
 app.get('/api/rooms/:id/messages', (req, res) => {
   const { member } = req.query;

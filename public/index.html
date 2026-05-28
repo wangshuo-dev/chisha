@@ -523,7 +523,7 @@ async function showRoom(roomId){
   const isXiaogu=room?.name?.startsWith('小鼓·');
   const roomName=isXiaogu?'🤖 小鼓 (AI辅导)':room?.type==='private'?room.members.find(m=>m!==currentUser):(room?.name||'聊天');
   panel.innerHTML=`
-    <div class="flex items-center gap-2 mb-3"><button onclick="backToRoomList()" class="text-gray-500 text-lg">‹</button><span class="font-semibold text-sm flex-1">${roomName}</span><span class="text-xs text-gray-400">${room?.members?.length||0}人</span></div>
+    <div class="flex items-center gap-2 mb-3"><button onclick="backToRoomList()" class="text-gray-500 text-lg">‹</button><span class="font-semibold text-sm flex-1">${roomName}</span><span class="text-xs text-gray-400">${room?.members?.length||0}人</span><button id="ai-toggle-btn" onclick="toggleAI()" class="text-xs px-2 py-1 rounded-full ${room?.include_ai?'bg-green-100 text-green-600':'bg-gray-100 text-gray-400'}">${room?.include_ai?'🤖 小鼓开':'🤖 小鼓关'}</button></div>
     <div id="chat-messages" class="space-y-3 overflow-y-auto bg-[#ebebeb] -mx-4 px-4 py-3" style="height:calc(100vh - 240px)"></div>
     <div id="chat-preview" class="hidden mb-2 p-2 bg-gray-50 rounded-lg relative"><button onclick="clearChatFile()" class="absolute top-1 right-1 text-gray-400 text-sm">✕</button><img id="chat-preview-img" class="hidden max-h-24 rounded"><div id="chat-preview-file" class="hidden text-xs text-gray-600">📎 <span id="chat-preview-filename"></span></div></div>
     <div class="flex gap-2 mt-2 items-center">
@@ -534,6 +534,18 @@ async function showRoom(roomId){
   loadRoomMessages(roomId);
 }
 function backToRoomList(){currentRoomId=null;loadChat();}
+
+// 切换AI回复开关
+let aiEnabled=true;
+async function toggleAI(){
+  const room=chatRooms.find(r=>r.id===currentRoomId);
+  if(!room)return;
+  const newVal=!room.include_ai;
+  await fetch(`/api/rooms/${currentRoomId}/toggle-ai`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({include_ai:newVal})});
+  room.include_ai=newVal?1:0;
+  const btn=document.getElementById('ai-toggle-btn');
+  if(btn){btn.className=`text-xs px-2 py-1 rounded-full ${newVal?'bg-green-100 text-green-600':'bg-gray-100 text-gray-400'}`;btn.textContent=newVal?'🤖 小鼓开':'🤖 小鼓关';}
+}
 
 // 微信风格时间分隔：间隔>5分钟显示时间条
 function formatMsgTime(dateStr){
@@ -606,7 +618,7 @@ async function sendRoomMsg(){
 
   try{
     // 发送请求
-    const res=await fetch(`/api/rooms/${currentRoomId}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:sendContent,iv:'',is_encrypted:false,call_ai:true})});
+    const res=await fetch(`/api/rooms/${currentRoomId}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:sendContent,iv:'',is_encrypted:false,call_ai:!!(chatRooms.find(r=>r.id===currentRoomId)?.include_ai)})});
     if(!res.ok)throw new Error('发送失败');
     const data=await res.json();
 
@@ -638,7 +650,7 @@ async function retryRoomMsg(sendContent){
   container.innerHTML+=`<div id="${msgId}" class="flex justify-end gap-1.5 items-start"><div id="${msgId}_status" class="msg-sending"></div><div class="msg-bubble msg-bubble-me msg-mine px-3 py-2 text-sm">重发中...</div>${avatar(currentUser,'sm')}</div>`;
   container.scrollTop=container.scrollHeight;
   try{
-    const res=await fetch(`/api/rooms/${currentRoomId}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:sendContent,iv:'',is_encrypted:false,call_ai:true})});
+    const res=await fetch(`/api/rooms/${currentRoomId}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:currentUser,content:sendContent,iv:'',is_encrypted:false,call_ai:!!(chatRooms.find(r=>r.id===currentRoomId)?.include_ai)})});
     if(!res.ok)throw new Error('fail');
     document.getElementById(msgId)?.remove();
     loadRoomMessages(currentRoomId);
