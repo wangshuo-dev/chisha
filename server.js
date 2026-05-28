@@ -378,6 +378,18 @@ app.post('/api/activities/:id/status', (req, res) => {
   res.json({ ok: true });
 });
 
+// Delete activity (creator only)
+app.delete('/api/activities/:id', (req, res) => {
+  const { member } = req.body;
+  const act = db.prepare('SELECT * FROM activities WHERE id = ?').get(req.params.id);
+  if (!act) return res.status(404).json({ error: '活动不存在' });
+  if (act.creator !== member) return res.status(403).json({ error: '只有发起人可以删除' });
+  db.prepare('DELETE FROM activity_joins WHERE activity_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM activity_votes WHERE activity_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM activities WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
 // Anonymous vote on activity
 app.post('/api/activities/:id/vote', (req, res) => {
   const { member, vote } = req.body;
