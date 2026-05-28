@@ -595,7 +595,7 @@ async function loadRoomMessages(roomId){
     try{const p=JSON.parse(text);if(p&&p.file){const isImg=p.isImage||p.file.match(/\.(jpg|jpeg|png|gif|webp)$/i);text=(isImg?`<img src="${p.file}" class="max-w-48 rounded-lg mb-1 cursor-pointer" onclick="window.open('${p.file}')">`:`<a href="${p.file}" target="_blank" class="text-blue-500 underline text-xs">📎 ${p.fileName||'文件'}</a>`)+(p.text?`<div class="mt-1">${p.text}</div>`:'');}}catch(e){}
     if(isMe){html+=`<div class="flex justify-end gap-2 items-start"><div class="msg-bubble msg-bubble-me msg-mine px-3 py-2 text-sm"><span onclick="deleteMsg(${roomId},${m.id})" class="msg-del">×</span>${text}</div>${avatar(currentUser,'sm')}</div>`;}
     else if(isAI){const rendered=typeof marked!=='undefined'?marked.parse(text):text;html+=`<div class="flex gap-2 items-start"><div class="avatar avatar-sm" style="background:#666">🤖</div><div class="msg-bubble msg-bubble-ai px-3 py-2 text-sm">${rendered}</div></div>`;}
-    else{html+=`<div class="flex gap-2 items-start">${avatar(m.sender,'sm')}<div><div class="text-xs text-gray-500 mb-0.5">${m.sender}</div><div class="msg-bubble msg-bubble-other px-3 py-2 text-sm">${text}</div></div></div>`;}
+    else{html+=`<div class="flex gap-2 items-start">${avatar(m.sender,'sm')}<div style="min-width:0;flex:1"><div class="text-xs text-gray-500 mb-0.5">${m.sender}</div><div class="msg-bubble msg-bubble-other px-3 py-2 text-sm">${text}</div></div></div>`;}
   });
   container.innerHTML=html;
   container.scrollTop=container.scrollHeight;
